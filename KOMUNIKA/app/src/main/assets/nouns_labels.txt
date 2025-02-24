@@ -1,0 +1,4 @@
+age
+birthday
+friend
+name

@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">Komunika</string>
+    <string name="microphone_button">Microphone</string>
+    <string name="type_here">Mag type dito...</string>
+    <string name="send_button">Sent</string>
+    <string-array name="user_type_array">
+        <item>Non mute</item>
+        <item>Deaf/Mute</item>
+    </string-array>
+    <string name="multiple_phone">MULTIPLE PHONE</string>
+    <string name="back_icon">Back Icon</string>
+    <string name="single_phone">SINGLE PHONE</string>
+
+    <string name="device_id_template">Device ID: %1$s</string>
+    <string name="user_type_template">User Type: %1$s</string>
+
+    <string-array name="default_usernames">
+        <item>No users connected</item>
+    </string-array>
+</resources>

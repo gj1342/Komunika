@@ -1,0 +1,8 @@
+Correct
+Fast
+Fine
+Good
+No
+Slow
+Wrong
+Yes

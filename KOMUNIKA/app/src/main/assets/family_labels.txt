@@ -1,0 +1,10 @@
+Auntie
+Baby
+Brother
+Cousin
+Grandfather
+Grandmother
+Mama
+Papa
+Sister
+Uncle

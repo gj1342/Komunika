@@ -1,0 +1,7 @@
+Book
+Class
+Lecture
+Paper
+Pencil
+School
+Teacher

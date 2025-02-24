@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FFFDD6"
+    tools:context=".StartingLobbyActivity">
+
+    <!-- Profile Section -->
+    <RelativeLayout
+        android:id="@+id/relativeLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/rounded_header"
+        android:elevation="8dp"
+        android:padding="16dp"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <!-- Profile Image -->
+        <de.hdodenhof.circleimageview.CircleImageView
+            android:id="@+id/profile_picture"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_alignParentStart="true"
+            android:layout_marginEnd="16dp"
+            android:contentDescription="Profile Picture"
+            android:src="@drawable/pfp"
+            app:civ_border_color="@color/black"
+            app:civ_border_width="2dp" />
+
+        <!-- Username -->
+        <TextView
+            android:id="@+id/username"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_toEndOf="@id/profile_picture"
+            android:fontFamily="sans-serif-medium"
+            android:text="Username"
+            android:textColor="@color/black"
+            android:textSize="24sp" />
+
+        <!-- Device ID -->
+        <TextView
+            android:id="@+id/device_id"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/username"
+            android:layout_toEndOf="@id/profile_picture"
+            android:text="DeviceID:"
+            android:textColor="@color/black"
+            android:textSize="16sp" />
+
+        <!-- User Type Label and Spinner -->
+        <TextView
+            android:id="@+id/user_type_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/device_id"
+            android:layout_marginEnd="8dp"
+            android:layout_toEndOf="@id/profile_picture"
+            android:gravity="center_vertical"
+            android:text="User Type:"
+            android:textColor="@android:color/black"
+            android:textSize="16sp" />
+
+        <Spinner
+            android:id="@+id/user_type_spinner"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/device_id"
+            android:layout_marginStart="4dp"
+            android:layout_toEndOf="@id/user_type_label"
+            android:entries="@array/user_type_array"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp" />
+
+        <!-- Chat Icon -->
+        <ImageView
+            android:id="@+id/chat_icon"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_alignParentEnd="true"
+            android:contentDescription="Chat Icon"
+            android:src="@drawable/feedback"
+            android:visibility="invisible"/>
+
+        <!-- Edit Icon -->
+        <ImageView
+            android:id="@+id/imageView2"
+            android:layout_width="16dp"
+            android:layout_height="17dp"
+            android:layout_above="@+id/user_type_spinner"
+            android:layout_marginStart="10dp"
+            android:layout_marginBottom="37dp"
+            android:layout_toEndOf="@id/username"
+            app:srcCompat="@drawable/edit" />
+
+    </RelativeLayout>
+
+    <!-- Back Button -->
+    <ImageView
+        android:id="@+id/back_icon"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="16dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/relativeLayout"
+        app:srcCompat="@drawable/back" />
+
+    <!-- Title Section -->
+    <Button
+        android:id="@+id/navigation_button"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="16dp"
+        android:backgroundTint="#4C0E51"
+        android:text="Paano ka makikibahagi?"
+        android:textColor="@color/white"
+        android:textSize="18sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@+id/back_icon"
+        app:layout_constraintTop_toBottomOf="@+id/relativeLayout" />
+
+    <!-- New Instruction Text -->
+    <TextView
+        android:id="@+id/hotspot_instructions"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="16dp"
+        android:text="Please enable your Wifi, bluetooth and location if you want to start a communication session."
+        android:textColor="@android:color/black"
+        android:textSize="16sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/navigation_button" />
+
+    <!-- Bottom Buttons -->
+    <LinearLayout
+        android:id="@+id/linearLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="32dp"
+        android:gravity="center"
+        android:orientation="horizontal"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/hotspot_instructions">
+
+        <!-- Accept Button -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- Accept Icon -->
+            <ImageView
+                android:id="@+id/accept_icon"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:contentDescription="Accept Icon"
+                android:src="@drawable/accept" />
+
+            <!-- EditText for Service ID -->
+            <EditText
+                android:id="@+id/service_id_edit_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:hint="Enter Service ID"
+                android:textColor="@color/black"
+                android:textSize="16sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Start Button -->
+    <Button
+        android:id="@+id/start_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:backgroundTint="#345DA7"
+        android:text="SIMULAN"
+        android:textColor="@color/white"
+        android:textSize="16sp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/linearLayout"
+        app:layout_constraintHorizontal_bias="0.5"
+        app:layout_constraintVertical_bias="0.0" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>
