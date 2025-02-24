@@ -55,3 +55,65 @@ Komunika Prototype is an Android application that bridges the gap between deaf/m
     - **SignersToNonSigners:** For signers to interact with non-deaf users.
 
 - **Vocabulary List:** Browse sign language vocabulary videos across different categories.
+
+### Starting Lobby
+
+- When you launch the app, the Starting Lobby allows you to set up your profile by entering a username, choosing a user type (Deaf/Mute or Non-Deaf), and providing a Service ID.
+
+### Home Screen
+
+- After the lobby, the Home Screen presents a carousel displaying various modes:
+  - **Single Phone Mode:** Translate voice to FSL and text to voice on a single device.
+  - **Multi-Device Mode:**
+    - **NonSignersToSigners:** For non-deaf users to communicate with signers.
+    - **SignersToNonSigners:** For signers to interact with non-deaf users.
+  - **Vocabulary List:** Browse sign language vocabulary videos across different categories.
+
+### Communication
+
+- Depending on your selection, the app will either establish a connection with nearby devices or work independently to provide real-time translation.
+
+## Code Structure
+
+- **StartingLobbyActivity.kt:**  
+  Manages the initial user setup and navigates to the appropriate communication mode based on the user type.
+
+- **HomeScreenActivity.kt:**  
+  Serves as the main dashboard with a carousel for mode selection and profile management.
+
+- **NonSignersToSignersActivity.kt & SignersToNonSignersActivity.kt:**  
+  Handle multi-device communication using the Google Nearby Connections API.
+
+- **SinglePhoneActivity.kt:**  
+  Supports a single-device translation mode, combining voice recognition and sign language detection.
+
+- **PoseLandmarkerHelper.kt:**  
+  Implements pose detection using MediaPipe, facilitating landmark detection in real time.
+
+- **HandLandmarkerHelper.kt:**  
+  Manages hand detection and keypoint extraction using MediaPipe.
+
+- **VocabularyListActivity.kt:**  
+  Provides a categorized list of vocabulary with video resources to aid in learning FSL.
+
+## Contribution Guidelines
+
+Contributions are welcome! If you have suggestions or improvements:
+
+1. Fork the repository.
+2. Create a new branch for your feature or bug fix.
+3. Commit your changes with clear messages.
+4. Submit a pull request.
+
+For major changes, please open an issue first to discuss what you would like to change.
+
+## License
+
+- This project is licensed under the MIT License. See the LICENSE file for details.
+
+## Acknowledgements
+
+- **MediaPipe**
+- **Google Nearby Connections API**
+- **Vosk Speech Recognition**
+- **Android community and open-source contributors**
