@@ -122,4 +122,4 @@ For major changes, please open an issue first to discuss what you would like to 
 - **gj1342**
 - **Grimorde01**
 - **rica-ai**
-- 
+- **titania-cntrl**
