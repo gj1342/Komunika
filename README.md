@@ -118,7 +118,7 @@ For major changes, please open an issue first to discuss what you would like to 
 - **Vosk Speech Recognition**
 - **Android community and open-source contributors**
 
-##Team
+## Team
 - **gj1342**
 - **Grimorde01**
 - **rica-ai**
