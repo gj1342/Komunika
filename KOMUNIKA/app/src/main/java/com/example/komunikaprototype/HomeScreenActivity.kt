@@ -27,7 +27,6 @@ import java.io.OutputStream
 class HomeScreenActivity : AppCompatActivity() {
 
     private lateinit var viewPager: ViewPager2
-    private lateinit var titleTextView: TextView
     private lateinit var descriptionTextView: TextView
     private lateinit var profileImageView: CircleImageView
     private lateinit var usernameTextView: TextView

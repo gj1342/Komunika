@@ -102,21 +102,24 @@
 
         <ImageView
             android:id="@+id/imageView2"
-            android:layout_width="16dp"
-            android:layout_height="17dp"
+            android:layout_width="20dp"
+            android:layout_height="21dp"
             android:layout_above="@+id/user_type_spinner"
-            android:layout_marginStart="10dp"
-            android:layout_marginBottom="37dp"
+            android:layout_marginStart="11dp"
+            android:layout_marginBottom="24dp"
             android:layout_toEndOf="@+id/username"
             app:srcCompat="@drawable/edit" />
 
     </RelativeLayout>
+
+    <!-- Title Text View -->
 
     <Button
         android:id="@+id/navigation_button"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginStart="32dp"
+        android:layout_marginTop="36dp"
         android:layout_marginEnd="32dp"
         android:backgroundTint="#E47350"
         android:text="Navigation"
@@ -127,7 +130,6 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/relativeLayout" />
 
-    <!-- Title Text View -->
     <androidx.viewpager2.widget.ViewPager2
         android:id="@+id/viewPager"
         android:layout_width="0dp"
@@ -159,7 +161,7 @@
         <TextView
             android:id="@+id/descriptionTextView"
             android:layout_width="match_parent"
-            android:layout_height="224dp"
+            android:layout_height="91dp"
             android:background="#F4F088"
             android:padding="16dp"
             android:text="Description"

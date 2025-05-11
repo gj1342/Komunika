@@ -1,10 +1,15 @@
 package com.example.komunikaprototype
 
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
+import android.util.TypedValue
+import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ImageView
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.VideoView
 import androidx.appcompat.app.AppCompatActivity
@@ -163,7 +168,6 @@ class SinglePhoneActivity : AppCompatActivity() {
         "you" to R.raw.you,
         "they"  to R.raw.they,
         "them"  to R.raw.they,
-
         "muli" to R.raw.again,
         "ulit" to R.raw.again,
         "book" to R.raw.book,
@@ -333,6 +337,18 @@ class SinglePhoneActivity : AppCompatActivity() {
         displayTextView = findViewById(R.id.textView)
         chatHistoryTextView = findViewById(R.id.chatHistoryTextView)
 
+        // Programmatically set a rounded background for the scrollable display TextView
+        val scrollableDisplayTextView = findViewById<ScrollView>(R.id.scrollableDisplayTextView)
+        val radius = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP, 16f, resources.displayMetrics
+        )
+        val drawable = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(Color.parseColor("#00B2FF"))
+            cornerRadius = radius
+        }
+        scrollableDisplayTextView.background = drawable
+
         // Set backIcon click listener to simply finish the activity
         backIcon.setOnClickListener {
             finish()
@@ -340,6 +356,10 @@ class SinglePhoneActivity : AppCompatActivity() {
 
         // Set playButton click listener
         playButton.setOnClickListener {
+            // Hide the soft keyboard when playButton is clicked
+            val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.hideSoftInputFromWindow(inputText.windowToken, 0)
+
             val input = inputText.text.toString().trim()
             if (input.isNotBlank()) {
                 // Append to chat history

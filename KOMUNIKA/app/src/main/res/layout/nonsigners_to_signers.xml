@@ -63,9 +63,9 @@
         <androidx.camera.view.PreviewView
             android:id="@+id/previewView"
             android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+            android:layout_height="match_parent" >
+        </androidx.camera.view.PreviewView>
 
-        <!-- Predicted Sign TextView -->
         <TextView
             android:id="@+id/predictedSignTextView"
             android:layout_width="wrap_content"
@@ -76,9 +76,9 @@
             android:elevation="8dp"
             android:gravity="start"
             android:padding="8dp"
-            android:text="Predicted sign: "
+            android:text=""
             android:textColor="#FFFFFF"
-            android:textSize="12sp" />
+            android:textSize="20sp" />
 
         <!-- Participant Count TextView -->
         <TextView

@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.PorterDuff
 import android.util.AttributeSet
 import android.view.View
 import com.google.mediapipe.tasks.vision.handlandmarker.HandLandmarkerResult
@@ -36,39 +37,50 @@ class OverlayView @JvmOverloads constructor(
         Pair(0, 17) // Palm base to pinky
     )
 
+    /**
+     * Updates the overlay with new detection results and ensures the view is visible.
+     */
     fun setResults(results: HandLandmarkerResult) {
         handLandmarkerResult = results
+        visibility = View.VISIBLE
         invalidate()
     }
 
+    /**
+     * Clears the overlay by removing any stored detection results,
+     * clearing the canvas, and setting the view visibility to GONE.
+     */
     fun clear() {
         handLandmarkerResult = null
+        visibility = View.GONE
         invalidate() // Request a redraw to clear the canvas
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        // Clear the canvas if there are no detection results
+        // If no hand landmarks are available, clear the canvas completely.
         if (handLandmarkerResult == null || handLandmarkerResult?.landmarks()?.isEmpty() == true) {
-            canvas.drawColor(Color.TRANSPARENT) // Clear the canvas
+            canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
             return
         }
 
-        // Draw landmarks and connections if available
+        // Draw landmarks and connections if available.
         handLandmarkerResult?.landmarks()?.forEach { handLandmarks ->
             val points = handLandmarks.map { landmark ->
                 Pair(landmark.x() * width, landmark.y() * height)
             }
 
-            // Draw connections
+            // Draw connections between keypoints.
             for (connection in connections) {
-                val start = points[connection.first]
-                val end = points[connection.second]
-                canvas.drawLine(start.first, start.second, end.first, end.second, linePaint)
+                if (connection.first < points.size && connection.second < points.size) {
+                    val start = points[connection.first]
+                    val end = points[connection.second]
+                    canvas.drawLine(start.first, start.second, end.first, end.second, linePaint)
+                }
             }
 
-            // Draw circles for landmarks
+            // Draw circles for each landmark.
             points.forEach { (x, y) ->
                 canvas.drawCircle(x, y, 8f, circlePaint)
             }
