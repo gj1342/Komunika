@@ -28,6 +28,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.speech.tts.TextToSpeech
 import android.view.View
+import android.view.inputmethod.InputMethodManager
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.ImageView
@@ -180,6 +181,11 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
 
         // Add listener to the send button
         sendButton.setOnClickListener {
+
+            // Dismiss the soft keyboard
+            val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.hideSoftInputFromWindow(messageInput.windowToken, 0)
+
             val selectedUser = viewBinding.userSpinner.selectedItem.toString()
             val message = messageInput.text.toString().trim()
 
@@ -205,7 +211,6 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
             messageInput.text.clear()
         }
 
-        // Add listener to the spinner (optional functionality for tracking selection)
         // Add listener to the spinner (to handle "None" selection and stop predictions)
         viewBinding.userSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>, view: View?, position: Int, id: Long) {
@@ -436,7 +441,6 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
                         // Check if the message starts with "MESSAGE:", skip adding to spinner if true
                         if (normalizedMessage.startsWith("MESSAGE:")) {
                             Log.d(TAG, "Processing MESSAGE: entry for spinner: $normalizedMessage")
-
                             return@runOnUiThread
                         }
 
@@ -482,25 +486,23 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
 
                         // Process the message based on its stripped content
                         when (strippedMessage) {
-                            "1" -> handLandmarkerHelper?.loadModelsAndLabels("A-D, F-M, U")
-                            "2" -> handLandmarkerHelper?.loadModelsAndLabels("E, N-T, V-Z")
-                            "3" -> handLandmarkerHelper?.loadModelsAndLabels("1-5")
-                            "18" -> handLandmarkerHelper?.loadModelsAndLabels("6-10")
-                            "19" -> handLandmarkerHelper?.loadModelsAndLabels("20-100")
-                            "4" -> handLandmarkerHelper?.loadModelsAndLabels("greetings")
-                            "5" -> handLandmarkerHelper?.loadModelsAndLabels("responses")
-                            "6" -> handLandmarkerHelper?.loadModelsAndLabels("family")
-                            "7" -> handLandmarkerHelper?.loadModelsAndLabels("colors")
-                            "8" -> handLandmarkerHelper?.loadModelsAndLabels("pronouns")
-                            "9" -> handLandmarkerHelper?.loadModelsAndLabels("nouns")
-                            "10" -> handLandmarkerHelper?.loadModelsAndLabels("verbs")
-                            "11" -> handLandmarkerHelper?.loadModelsAndLabels("school")
-                            "12" -> handLandmarkerHelper?.loadModelsAndLabels("JanToJune")
-                            "13" -> handLandmarkerHelper?.loadModelsAndLabels("JulyToDec")
-                            "14" -> handLandmarkerHelper?.loadModelsAndLabels("weeks")
-                            "15" -> handLandmarkerHelper?.loadModelsAndLabels("time")
-                            "16" -> handLandmarkerHelper?.loadModelsAndLabels("questions")
-                            "17" -> handLandmarkerHelper?.loadModelsAndLabels("phrases")
+                            "1" -> handLandmarkerHelper?.loadModelsAndLabels("alphabets")
+                            "2" -> handLandmarkerHelper?.loadModelsAndLabels("1-5")
+                            "3" -> handLandmarkerHelper?.loadModelsAndLabels("6-10")
+                            "4" -> handLandmarkerHelper?.loadModelsAndLabels("20-100")
+                            "5" -> handLandmarkerHelper?.loadModelsAndLabels("greetings")
+                            "6" -> handLandmarkerHelper?.loadModelsAndLabels("responses")
+                            "7" -> handLandmarkerHelper?.loadModelsAndLabels("family")
+                            "8" -> handLandmarkerHelper?.loadModelsAndLabels("colors")
+                            "9" -> handLandmarkerHelper?.loadModelsAndLabels("pronouns")
+                            "10" -> handLandmarkerHelper?.loadModelsAndLabels("nouns")
+                            "11" -> handLandmarkerHelper?.loadModelsAndLabels("verbs")
+                            "12" -> handLandmarkerHelper?.loadModelsAndLabels("school")
+                            "13" -> handLandmarkerHelper?.loadModelsAndLabels("weeks")
+                            "14" -> handLandmarkerHelper?.loadModelsAndLabels("time")
+                            "15" -> handLandmarkerHelper?.loadModelsAndLabels("questions")
+                            "16" -> handLandmarkerHelper?.loadModelsAndLabels("phrases")
+                            "17" -> handLandmarkerHelper?.loadModelsAndLabels("calendar")
                             else -> Log.e(TAG, "Unknown model selection: $message")
                         }
                         modelsLoaded = true
@@ -517,19 +519,28 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
     private fun clearPrediction() {
         runOnUiThread {
             if (predictionHistory.isNotEmpty()) {
-                // Remove the last prediction group
+                // Remove the last prediction
                 predictionHistory.removeAt(predictionHistory.size - 1)
-
-                // Update the sentenceBuilder with the remaining predictions
-                sentenceBuilder.clear()
-                sentenceBuilder.append(predictionHistory.joinToString(" "))
-
-                // Update the sentenceTextView to reflect the change
-                sentenceTextView.text = "Prediction: ${sentenceBuilder.toString().trim()}"
-                Toast.makeText(this, "Last predicted phrase removed.", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, "No predictions to clear.", Toast.LENGTH_SHORT).show()
             }
+
+            // Update the sentence builder with the remaining predictions
+            sentenceBuilder.clear()
+            sentenceBuilder.append(predictionHistory.joinToString(" "))
+
+            // Update UI with new prediction (or empty if all removed)
+            val updatedText = if (sentenceBuilder.isNotEmpty()) {
+                "Prediction: ${sentenceBuilder.toString().trim()}"
+            } else {
+                "Prediction: " // Ensure UI reflects an empty prediction
+            }
+            sentenceTextView.text = updatedText
+
+            // Notify the user
+            Toast.makeText(this, "Last predicted phrase removed.", Toast.LENGTH_SHORT).show()
+
+            // Resend updated (or empty) prediction
+            val selectedUser = viewBinding.userSpinner.selectedItem.toString()
+            sendPredictionToUser(selectedUser, forceSendEmpty = predictionHistory.isEmpty())
         }
     }
 
@@ -562,7 +573,7 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
                 username.startsWith("CONTROL:") ||
                 username.startsWith("MESSAGE:") ||
                 username.startsWith("BROADCAST:") ||
-                username.startsWith("ROLE:") ||  // Filter out usernames with "ROLE:" prefix
+                username.startsWith("ROLE:") ||
                 username == "Unknown" ||
                 username == currentDeviceUsername
             ) {
@@ -806,8 +817,8 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
     }
 
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
-        ContextCompat.checkSelfPermission(baseContext, it) == PackageManager.PERMISSION_GRANTED
-        return ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        ContextCompat.checkSelfPermission(baseContext, it) == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
@@ -835,17 +846,16 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
     // Implement HandLandmarkerHelper.LandmarkerListener
     override fun onResults(resultBundle: HandLandmarkerHelper.ResultBundle) {
         runOnUiThread {
-            if (isFinishing) return@runOnUiThread // Prevent updating the UI if activity is closing
-
             val handLandmarkerResult = resultBundle.results
 
-            // Check if hands are detected
             if (handLandmarkerResult.landmarks().isNotEmpty()) {
+                // Draw
+                overlayView.setResults(handLandmarkerResult)
                 overlayView.visibility = View.VISIBLE
-                overlayView.setResults(handLandmarkerResult) // Pass results to the OverlayView
             } else {
-                overlayView.clear() // Clear the overlay when no hands are detected
-                overlayView.visibility = View.INVISIBLE // Hide the OverlayView
+                // Clear + hide
+                overlayView.clear()
+                overlayView.visibility = View.GONE
             }
         }
     }
@@ -863,18 +873,18 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
             if (isFinishing) return@runOnUiThread
 
             if (prediction.isNotBlank()) {
-                predictionHistory.add(prediction) // Add to the history
-                sentenceBuilder.append("$prediction ")
+                predictionHistory.add(prediction) // Add the latest prediction to history
+                sentenceBuilder.append(" $prediction ") // Append it to the sentence
                 sentenceTextView.text = "Prediction: ${sentenceBuilder.toString().trim()}"
 
-                // Speak the new predicted text
-                speakText(prediction) // Speak only the latest word, not the entire sentence
+                // Speak only the latest prediction, not the full sentence
+                speakText(prediction)
 
                 resetTimer()
 
-                // Send the prediction to connected users
+                // Send the updated sentence prediction to connected devices
                 val selectedUser = viewBinding.userSpinner.selectedItem.toString()
-                sendPredictionToUser(prediction, selectedUser)
+                sendPredictionToUser(selectedUser)
             } else {
                 sentenceTextView.text = "Prediction Unavailable"
             }
@@ -883,12 +893,12 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
 
     private fun speakText(text: String) {
         if (isTTSInitialized) {
-            textToSpeech.stop() // Stop any current speech before speaking the new one
+            textToSpeech.stop() // Stop any ongoing speech
             textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
         }
     }
 
-    private fun sendPredictionToUser(prediction: String, selectedUser: String) {
+    private fun sendPredictionToUser(selectedUser: String, forceSendEmpty: Boolean = false) {
         if (connectedEndpoints.isEmpty()) {
             Log.e(TAG, "Cannot send prediction: No connected endpoints.")
             Toast.makeText(this, "No device connected to send the prediction.", Toast.LENGTH_SHORT).show()
@@ -901,10 +911,25 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
         }
 
         val currentDeviceUsername = intent.getStringExtra("USERNAME") ?: "Unknown"
+
+        // Get full sentence from sentenceTextView
+        var fullSentence = sentenceTextView.text.toString().removePrefix("Prediction: ").trim()
+
+        // Ensure empty predictions can be sent if forced
+        if (fullSentence.isBlank() && !forceSendEmpty) {
+            Toast.makeText(this, "No prediction to send.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // If forced, explicitly send an empty string
+        if (forceSendEmpty) {
+            fullSentence = ""
+        }
+
         val payloadMessage = if (selectedUser == "All") {
-            "BROADCAST_PREDICTION:$currentDeviceUsername:$prediction"
+            "BROADCAST_PREDICTION:$currentDeviceUsername:$fullSentence"
         } else {
-            "PREDICTION:$currentDeviceUsername:$prediction"
+            "PREDICTION:$currentDeviceUsername:$fullSentence"
         }
 
         var predictionSent = false
@@ -913,10 +938,10 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
             for ((endpointId, username) in connectedEndpoints) {
                 connectionsClient.sendPayload(endpointId, Payload.fromBytes(payloadMessage.toByteArray()))
                     .addOnSuccessListener {
-                        Log.d(TAG, "Prediction broadcasted to $username: $prediction")
+                        Log.d(TAG, "Prediction broadcasted to $username: '$fullSentence'")
                     }
                     .addOnFailureListener { e ->
-                        Log.e(TAG, "Failed to broadcast prediction to $username: $prediction", e)
+                        Log.e(TAG, "Failed to broadcast prediction to $username: '$fullSentence'", e)
                     }
             }
             predictionSent = true
@@ -925,10 +950,10 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
             if (targetEndpointId != null) {
                 connectionsClient.sendPayload(targetEndpointId, Payload.fromBytes(payloadMessage.toByteArray()))
                     .addOnSuccessListener {
-                        Log.d(TAG, "Prediction sent to $selectedUser: $prediction")
+                        Log.d(TAG, "Prediction sent to $selectedUser: '$fullSentence'")
                     }
                     .addOnFailureListener { e ->
-                        Log.e(TAG, "Failed to send prediction to $selectedUser: $prediction", e)
+                        Log.e(TAG, "Failed to send prediction to $selectedUser: '$fullSentence'", e)
                     }
                 predictionSent = true
             }
@@ -1022,7 +1047,7 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
                 Manifest.permission.BLUETOOTH_ADMIN,
                 Manifest.permission.ACCESS_WIFI_STATE,
                 Manifest.permission.CHANGE_WIFI_STATE,
-                Manifest.permission.ACCESS_FINE_LOCATION, // Ensure this is present
+                Manifest.permission.ACCESS_FINE_LOCATION,
                 Manifest.permission.ACCESS_COARSE_LOCATION,
                 Manifest.permission.CAMERA,
                 Manifest.permission.RECORD_AUDIO

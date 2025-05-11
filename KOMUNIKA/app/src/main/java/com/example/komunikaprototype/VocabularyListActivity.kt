@@ -86,7 +86,8 @@ class VocabularyListActivity : AppCompatActivity() {
     private val verbsVideoMap = hashMapOf(
         "again" to R.raw.again, "eat" to R.raw.eat, "let" to R.raw.let,
         "meet" to R.raw.meet, "live" to R.raw.live, "see" to R.raw.see, "say" to R.raw.say,
-        "read" to R.raw.read, "teach" to R.raw.teach
+        "do" to R.raw.do_, "like" to R.raw.like, "love" to R.raw.love, "miss" to R.raw.miss,
+        "nice" to R.raw.nice
     )
 
     private val schoolVideoMap = hashMapOf(
@@ -202,11 +203,11 @@ class VocabularyListActivity : AppCompatActivity() {
             "colors_labels.txt",
             "pronouns.txt",
             "nouns_labels.txt",
-            "verbs.txt",
+            "verbs_labels.txt",
             "school_labels.txt",
             "calendars.txt",
             "weeks_labels.txt",
-            "time.txt",
+            "time_labels.txt",
             "questions_labels.txt",
             "phrases_labels.txt"
         )

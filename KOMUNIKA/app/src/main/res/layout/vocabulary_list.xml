@@ -235,6 +235,7 @@
                 android:id="@+id/button_10"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
                 android:paddingVertical="12dp"
                 android:backgroundTint="#F4C570"
                 android:elevation="6dp"
@@ -248,65 +249,66 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
-                android:paddingVertical="12dp"
                 android:backgroundTint="#F4C570"
                 android:elevation="6dp"
+                android:paddingVertical="12dp"
                 android:text="CALENDAR"
                 android:textColor="@color/black"
-                android:textStyle="bold"
-                android:textSize="20sp" />
-
-            <Button
-                android:id="@+id/button_12"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                android:paddingVertical="12dp"
-                android:backgroundTint="#F4C570"
-                android:elevation="6dp"
-                android:text="WEEKS"
-                android:textColor="@color/black"
-                android:textStyle="bold"
-                android:textSize="20sp" />
+                android:textSize="20sp"
+                android:textStyle="bold" />
 
             <Button
                 android:id="@+id/button_13"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
-                android:paddingVertical="12dp"
                 android:backgroundTint="#F4C570"
                 android:elevation="6dp"
+                android:paddingVertical="12dp"
                 android:text="TIME"
                 android:textColor="@color/black"
-                android:textStyle="bold"
-                android:textSize="20sp" />
+                android:textSize="20sp"
+                android:textStyle="bold" />
 
             <Button
                 android:id="@+id/button_14"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
-                android:paddingVertical="12dp"
                 android:backgroundTint="#F4C570"
                 android:elevation="6dp"
+                android:paddingVertical="12dp"
                 android:text="QUESTIONS"
                 android:textColor="@color/black"
-                android:textStyle="bold"
-                android:textSize="20sp" />
+                android:textSize="20sp"
+                android:textStyle="bold" />
 
             <Button
                 android:id="@+id/button_15"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
-                android:paddingVertical="12dp"
                 android:backgroundTint="#F4C570"
                 android:elevation="6dp"
+                android:paddingVertical="12dp"
                 android:text="PHRASES"
                 android:textColor="@color/black"
-                android:textStyle="bold"
-                android:textSize="20sp" />
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/button_12"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:backgroundTint="#F4C570"
+                android:elevation="6dp"
+                android:paddingVertical="12dp"
+                android:text="WEEKS"
+                android:textColor="@color/black"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
         </LinearLayout>
     </ScrollView>
 

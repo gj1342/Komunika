@@ -6,17 +6,17 @@
     android:layout_height="match_parent"
     android:padding="16dp">
 
-    <ImageView
+    <com.google.android.material.imageview.ShapeableImageView
         android:id="@+id/item_image"
-        android:layout_width="150dp"
-        android:layout_height="150dp"
+        android:layout_width="217dp"
+        android:layout_height="219dp"
         android:layout_marginBottom="8dp"
+        android:background="@android:color/transparent"
         android:scaleType="fitCenter"
-        android:background="@drawable/image_border"
         app:layout_constraintBottom_toTopOf="@id/item_title"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"/>
+        app:layout_constraintTop_toTopOf="parent" />
 
     <TextView
         android:id="@+id/item_title"

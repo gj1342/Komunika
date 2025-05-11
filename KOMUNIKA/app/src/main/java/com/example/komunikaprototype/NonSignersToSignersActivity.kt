@@ -404,12 +404,6 @@ class NonSignersToSignersActivity : AppCompatActivity(), PoseLandmarkerHelper.La
         viewBinding = NonsignersToSignersBinding.inflate(layoutInflater)
         setContentView(viewBinding.root)
 
-        // Back Button: Return to previous activity when clicked
-        val backButton: ImageView = findViewById(R.id.back_icon)
-        backButton.setOnClickListener {
-            finish()
-        }
-
         // Initialize PoseLandmarkerHelper
         poseLandmarkerHelper = PoseLandmarkerHelper(
             context = this,
@@ -489,25 +483,23 @@ class NonSignersToSignersActivity : AppCompatActivity(), PoseLandmarkerHelper.La
         val upwardSpinner = findViewById<Spinner>(R.id.upwardSpinner)
         val categoriesWithIds = mapOf(
             "None" to 0,
-            "A-D, F-M, U" to 1,
-            "E, N-T, V-Z" to 2,
-            "1-5" to 3,
-            "6-10" to 18,
-            "20-100" to 19,
-            "Greetings" to 4,
-            "Responses" to 5,
-            "Family" to 6,
-            "Colors" to 7,
-            "Pronouns" to 8,
-            "Nouns" to 9,
-            //"Verbs" to 10,
-            "School" to 11,
-            //"Jan-June" to 12,
-            //"July-Dec" to 13,
-            "Weeks" to 14,
-            //"Time" to 15,
-            "Questions" to 16,
-            "Phrases" to 17,
+            "Alphabets" to 1,
+            "1-5" to 2,
+            "6-10" to 3,
+            "20-100" to 4,
+            "Greetings" to 5,
+            "Responses" to 6,
+            "Family" to 7,
+            "Colors" to 8,
+            "Pronouns" to 9,
+            "Nouns" to 10,
+            "Verbs" to 11,
+            "School" to 12,
+            "Weeks" to 13,
+            "Time" to 14,
+            "Questions" to 15,
+            "Phrases" to 16,
+            "Calendar" to 17
         )
 
         val spinnerAdapter = ArrayAdapter(
@@ -687,17 +679,6 @@ class NonSignersToSignersActivity : AppCompatActivity(), PoseLandmarkerHelper.La
                     Toast.makeText(this, "Message delivery failed to some devices.", Toast.LENGTH_SHORT).show()
                 }
         }
-    }
-
-    private fun sendPayloadToEndpoint(endpointId: String, message: String) {
-        val payload = Payload.fromBytes(message.toByteArray())
-        connectionsClient.sendPayload(endpointId, payload)
-            .addOnSuccessListener {
-                Log.d(TAG, "Message sent successfully: $message to $endpointId")
-            }
-            .addOnFailureListener { e ->
-                Log.e(TAG, "Failed to send message: $message to $endpointId", e)
-            }
     }
 
     private fun startAdvertising() {
@@ -896,7 +877,7 @@ class NonSignersToSignersActivity : AppCompatActivity(), PoseLandmarkerHelper.La
     private fun displayPrediction(sender: String, prediction: String) {
         runOnUiThread {
             val predictedSignTextView = findViewById<TextView>(R.id.predictedSignTextView)
-            predictedSignTextView.text = "Predicted Sign: $prediction"
+            predictedSignTextView.text = "$prediction"
             Log.d(TAG, "Displayed prediction: $prediction")
         }
     }
@@ -949,7 +930,7 @@ class NonSignersToSignersActivity : AppCompatActivity(), PoseLandmarkerHelper.La
 
                         // Display the message with the sender's username
                         viewBinding.textView.visibility = View.VISIBLE
-                        viewBinding.textView.text = "$senderUsername sends a message: $actualMessage"
+                        viewBinding.textView.text = "$senderUsername : $actualMessage"
                         Log.d(TAG, "Message from $senderUsername displayed: $actualMessage")
 
                         // Process the message to play corresponding videos
@@ -961,7 +942,7 @@ class NonSignersToSignersActivity : AppCompatActivity(), PoseLandmarkerHelper.La
 
                         // Handle messages without the full structure
                         viewBinding.textView.visibility = View.VISIBLE
-                        viewBinding.textView.text = "$senderUsername sends a message: $actualMessage"
+                        viewBinding.textView.text = "$senderUsername : $actualMessage"
                         Log.d(TAG, "Message from $senderUsername displayed: $actualMessage")
 
                         // Process the message to play corresponding videos

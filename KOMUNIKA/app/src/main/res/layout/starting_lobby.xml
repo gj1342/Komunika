@@ -86,15 +86,6 @@
             android:visibility="invisible"/>
 
         <!-- Edit Icon -->
-        <ImageView
-            android:id="@+id/imageView2"
-            android:layout_width="16dp"
-            android:layout_height="17dp"
-            android:layout_above="@+id/user_type_spinner"
-            android:layout_marginStart="10dp"
-            android:layout_marginBottom="37dp"
-            android:layout_toEndOf="@id/username"
-            app:srcCompat="@drawable/edit" />
 
     </RelativeLayout>
 
@@ -128,8 +119,8 @@
     <!-- New Instruction Text -->
     <TextView
         android:id="@+id/hotspot_instructions"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
+        android:layout_width="310dp"
+        android:layout_height="55dp"
         android:layout_marginStart="16dp"
         android:layout_marginTop="8dp"
         android:layout_marginEnd="16dp"

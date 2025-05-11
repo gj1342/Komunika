@@ -26,12 +26,16 @@ class HandLandmarkerHelper(
     private var minHandDetectionConfidence: Float = DEFAULT_HAND_DETECTION_CONFIDENCE,
     private var minHandTrackingConfidence: Float = DEFAULT_HAND_TRACKING_CONFIDENCE,
     private var minHandPresenceConfidence: Float = DEFAULT_HAND_PRESENCE_CONFIDENCE,
-    private var maxNumHands: Int = DEFAULT_NUM_HANDS,
+    // This parameter is for detection; however, for certain categories we override it to 1.
+    private var detectionNumHands: Int = DEFAULT_NUM_HANDS,
     private var currentDelegate: Int = DELEGATE_CPU,
     private var runningMode: RunningMode = RunningMode.LIVE_STREAM,
     private val context: Context,
     private val handLandmarkerHelperListener: LandmarkerListener? = null
 ) {
+
+    // MODEL_NUM_HANDS is always 2 since the model input expects keypoints for two hands.
+    private val MODEL_NUM_HANDS = 2
 
     private var handLandmarker: HandLandmarker? = null
     private var modelInterpreters: List<Interpreter> = emptyList()
@@ -42,40 +46,43 @@ class HandLandmarkerHelper(
         setupHandLandmarker()
     }
 
-    // Function to load model folds and labels dynamically based on the provided category
+    /**
+     * Loads the models and labels dynamically based on the provided category.
+     *
+     * For the five categories ("A-D, F-M, U", "E, N-T, V-Z", "1-5", "6-10", "20-100"),
+     * we detect only one hand (detectionNumHands = 1) but still feed the model with
+     * an input tensor for two hands (the second half will be zeros).
+     */
     @Synchronized
     fun loadModelsAndLabels(category: String) {
-        // Ensure proper unloading of previous models to avoid memory leaks
+        // Unload any previous models to avoid memory leaks.
         unloadModels()
+
+        // Set the number of hands to detect based on the category.
+        if (category in listOf("alphabets", "1-5", "6-10", "20-100")) {
+            detectionNumHands = 1
+        } else {
+            detectionNumHands = DEFAULT_NUM_HANDS
+        }
+        // Reinitialize the hand landmarker so that the new detectionNumHands is applied.
+        clearHandLandmarker()
+        setupHandLandmarker()
 
         Log.d(TAG, "Loading models for category: $category")
         val tfliteOptions = Interpreter.Options().apply {
-            addDelegate(FlexDelegate()) // Add FlexDelegate to support custom TensorFlow operations
+            addDelegate(FlexDelegate()) // Support custom TensorFlow operations.
         }
 
         try {
             when (category) {
-                "A-D, F-M, U" -> {
-                    // Load the specific model for alphabets category (fold 2 only)
-                    val modelFile = "Alphabets_1_model_fold_2.tflite"
+                "alphabets" -> {
+                    val modelFile = "alphabets_model_fold_1.tflite"
                     modelInterpreters = listOf(
                         Interpreter(loadModelFile(modelFile), tfliteOptions).also {
                             Log.d(TAG, "Loading model file: $modelFile")
                         }
                     )
-
-                    labels = loadLabels("alphabets_1_labels.txt")
-                    numClasses = labels.size
-                }
-                "E, N-T, V-Z" -> {
-                    val modelFile = "Alphabets_2_model_fold_2.tflite"
-                    modelInterpreters = listOf(
-                        Interpreter(loadModelFile(modelFile), tfliteOptions).also {
-                            Log.d(TAG, "Loading model file: $modelFile")
-                        }
-                    )
-
-                    labels = loadLabels("alphabets_2_labels.txt")
+                    labels = loadLabels("merged_alphabets_labels.txt")
                     numClasses = labels.size
                 }
                 "1-5" -> {
@@ -85,7 +92,6 @@ class HandLandmarkerHelper(
                             Log.d(TAG, "Loading model file: $modelFile")
                         }
                     )
-
                     labels = loadLabels("1-5_labels.txt")
                     numClasses = labels.size
                 }
@@ -96,7 +102,6 @@ class HandLandmarkerHelper(
                             Log.d(TAG, "Loading model file: $modelFile")
                         }
                     )
-
                     labels = loadLabels("6-10_labels.txt")
                     numClasses = labels.size
                 }
@@ -107,7 +112,6 @@ class HandLandmarkerHelper(
                             Log.d(TAG, "Loading model file: $modelFile")
                         }
                     )
-
                     labels = loadLabels("20-100_labels.txt")
                     numClasses = labels.size
                 }
@@ -118,7 +122,6 @@ class HandLandmarkerHelper(
                             Log.d(TAG, "Loading model file: $modelFile")
                         }
                     )
-
                     labels = loadLabels("greetings_labels.txt")
                     numClasses = labels.size
                 }
@@ -129,7 +132,6 @@ class HandLandmarkerHelper(
                             Log.d(TAG, "Loading model file: $modelFile")
                         }
                     )
-
                     labels = loadLabels("responses_labels.txt")
                     numClasses = labels.size
                 }
@@ -140,7 +142,6 @@ class HandLandmarkerHelper(
                             Log.d(TAG, "Loading model file: $modelFile")
                         }
                     )
-
                     labels = loadLabels("family_labels.txt")
                     numClasses = labels.size
                 }
@@ -151,7 +152,6 @@ class HandLandmarkerHelper(
                             Log.d(TAG, "Loading model file: $modelFile")
                         }
                     )
-
                     labels = loadLabels("colors_labels.txt")
                     numClasses = labels.size
                 }
@@ -162,7 +162,6 @@ class HandLandmarkerHelper(
                             Log.d(TAG, "Loading model file: $modelFile")
                         }
                     )
-
                     labels = loadLabels("pronouns_labels.txt")
                     numClasses = labels.size
                 }
@@ -173,12 +172,18 @@ class HandLandmarkerHelper(
                             Log.d(TAG, "Loading model file: $modelFile")
                         }
                     )
-
                     labels = loadLabels("nouns_labels.txt")
                     numClasses = labels.size
                 }
-                "verbs" -> { //wala pa
-
+                "verbs" -> {
+                    val modelFile = "Verbs_model_fold_2.tflite"
+                    modelInterpreters = listOf(
+                        Interpreter(loadModelFile(modelFile), tfliteOptions).also {
+                            Log.d(TAG, "Loading model file: $modelFile")
+                        }
+                    )
+                    labels = loadLabels("verbs_labels.txt")
+                    numClasses = labels.size
                 }
                 "school" -> {
                     val modelFile = "School_model_fold_3.tflite"
@@ -187,15 +192,18 @@ class HandLandmarkerHelper(
                             Log.d(TAG, "Loading model file: $modelFile")
                         }
                     )
-
                     labels = loadLabels("school_labels.txt")
                     numClasses = labels.size
                 }
-                "JanToJune" -> { //wala pa
-
-                }
-                "JulyToDec" -> { //wala pa
-
+                "calendar" -> { // Not yet implemented
+                    val modelFile = "Calendar_model_fold_2.tflite"
+                    modelInterpreters = listOf(
+                        Interpreter(loadModelFile(modelFile), tfliteOptions).also {
+                            Log.d(TAG, "Loading model file: $modelFile")
+                        }
+                    )
+                    labels = loadLabels("months_labels.txt")
+                    numClasses = labels.size
                 }
                 "weeks" -> {
                     val modelFile = "Weeks_model_fold_5.tflite"
@@ -204,12 +212,18 @@ class HandLandmarkerHelper(
                             Log.d(TAG, "Loading model file: $modelFile")
                         }
                     )
-
                     labels = loadLabels("weeks_labels.txt")
                     numClasses = labels.size
                 }
-                "time" -> { //wala pa
-
+                "time" -> {
+                    val modelFile = "Time_model_fold_2.tflite"
+                    modelInterpreters = listOf(
+                        Interpreter(loadModelFile(modelFile), tfliteOptions).also {
+                            Log.d(TAG, "Loading model file: $modelFile")
+                        }
+                    )
+                    labels = loadLabels("time_labels.txt")
+                    numClasses = labels.size
                 }
                 "questions" -> {
                     val modelFile = "Questions_model_fold_5.tflite"
@@ -218,7 +232,6 @@ class HandLandmarkerHelper(
                             Log.d(TAG, "Loading model file: $modelFile")
                         }
                     )
-
                     labels = loadLabels("questions_labels.txt")
                     numClasses = labels.size
                 }
@@ -229,7 +242,6 @@ class HandLandmarkerHelper(
                             Log.d(TAG, "Loading model file: $modelFile")
                         }
                     )
-
                     labels = loadLabels("phrases_labels.txt")
                     numClasses = labels.size
                 }
@@ -239,12 +251,9 @@ class HandLandmarkerHelper(
                 }
             }
 
-            // Log success for loaded models and labels
             Log.d(TAG, "Successfully loaded ${modelInterpreters.size} models for category: $category")
             Log.d(TAG, "Successfully loaded ${labels.size} labels for category: $category")
-
             labels.forEachIndexed { index, label -> Log.d(TAG, "Label $index: $label") }
-
         } catch (e: Exception) {
             Log.e(TAG, "Error while loading models and labels: ${e.message}", e)
         }
@@ -259,12 +268,10 @@ class HandLandmarkerHelper(
 
     private fun setupHandLandmarker() {
         val baseOptionBuilder = BaseOptions.builder()
-
         when (currentDelegate) {
             DELEGATE_CPU -> baseOptionBuilder.setDelegate(Delegate.CPU)
             DELEGATE_GPU -> baseOptionBuilder.setDelegate(Delegate.GPU)
         }
-
         baseOptionBuilder.setModelAssetPath(MP_HAND_LANDMARKER_TASK)
 
         if (runningMode == RunningMode.LIVE_STREAM && handLandmarkerHelperListener == null) {
@@ -280,7 +287,8 @@ class HandLandmarkerHelper(
                 .setMinHandDetectionConfidence(minHandDetectionConfidence)
                 .setMinTrackingConfidence(minHandTrackingConfidence)
                 .setMinHandPresenceConfidence(minHandPresenceConfidence)
-                .setNumHands(maxNumHands)
+                // Use detectionNumHands (which may be 1 for some categories) for detection.
+                .setNumHands(detectionNumHands)
                 .setRunningMode(runningMode)
 
             if (runningMode == RunningMode.LIVE_STREAM) {
@@ -316,7 +324,6 @@ class HandLandmarkerHelper(
         val vSize = vBuffer.remaining()
 
         val nv21 = ByteArray(ySize + uSize + vSize)
-
         yBuffer.get(nv21, 0, ySize)
         vBuffer.get(nv21, ySize, vSize)
         uBuffer.get(nv21, ySize + vSize, uSize)
@@ -343,7 +350,6 @@ class HandLandmarkerHelper(
             }
         }
         val rotatedBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-
         val mpImage = BitmapImageBuilder(rotatedBitmap).build()
 
         detectAsync(mpImage, frameTime)
@@ -359,19 +365,20 @@ class HandLandmarkerHelper(
     }
 
     private fun returnLivestreamResult(result: HandLandmarkerResult, input: MPImage) {
+        // 1) Always notify the listener
+        handLandmarkerHelperListener?.onResults(ResultBundle(result, input.height, input.width))
+
+        // 2) If there are landmarks, do inference
         if (result.landmarks().isNotEmpty()) {
             val keypoints = extractKeypoints(result)
             if (keypoints != null) {
                 keypointSequenceBuffer.add(keypoints)
-
                 if (keypointSequenceBuffer.size == SEQUENCE_LENGTH) {
                     val prediction = runInference(keypointSequenceBuffer)
                     keypointSequenceBuffer.clear()
                     handLandmarkerHelperListener?.onPrediction(prediction)
                 }
             }
-
-            handLandmarkerHelperListener?.onResults(ResultBundle(result, input.height, input.width))
         }
     }
 
@@ -381,16 +388,25 @@ class HandLandmarkerHelper(
         )
     }
 
+    /**
+     * Extracts keypoints from the detection result.
+     *
+     * Regardless of how many hands are detected (detectionNumHands may be 1),
+     * the returned FloatArray is always sized for two hands (MODEL_NUM_HANDS).
+     * For any undetected hand, its keypoints remain zero.
+     */
     private fun extractKeypoints(result: HandLandmarkerResult): FloatArray? {
         if (result.landmarks().isEmpty()) {
             return null
         }
-
-        val keypoints = FloatArray(NUM_KEYPOINTS) { 0f } // Initialize with zero
+        // Always allocate space for keypoints of two hands.
+        val expectedNumKeypoints = NUM_KEYPOINTS_PER_HAND * MODEL_NUM_HANDS
+        val keypoints = FloatArray(expectedNumKeypoints) { 0f }
         val landmarks = result.landmarks()
 
         var index = 0
-        for (handIndex in 0 until maxNumHands) {
+        // Process detected hands (up to detectionNumHands)
+        for (handIndex in 0 until detectionNumHands) {
             if (handIndex < landmarks.size) {
                 for (landmark in landmarks[handIndex]) {
                     keypoints[index++] = landmark.x()
@@ -403,47 +419,45 @@ class HandLandmarkerHelper(
                 }
             }
         }
+        // The remaining keypoints (if any) for the undetected hand(s) remain zero.
         return keypoints
     }
 
+    /**
+     * Runs inference on the collected keypoint sequence.
+     *
+     * The input tensor is always built with keypoints for two hands.
+     */
     @Synchronized
     private fun runInference(keypointSequence: List<FloatArray>): String {
-        return try {
-            val input = Array(1) { Array(SEQUENCE_LENGTH) { FloatArray(NUM_KEYPOINTS) } }
-            for (i in keypointSequence.indices) {
-                input[0][i] = keypointSequence[i]
+        val input = Array(1) { Array(SEQUENCE_LENGTH) { FloatArray(NUM_KEYPOINTS_PER_HAND * MODEL_NUM_HANDS) } }
+        for (i in keypointSequence.indices) {
+            input[0][i] = keypointSequence[i]
+        }
+        Log.d(TAG, "Running inference on keypoint sequence of size: ${keypointSequence.size}")
+
+        val outputs = modelInterpreters.mapIndexed { index, interpreter ->
+            val output = Array(1) { FloatArray(numClasses) }
+            interpreter.run(input, output)
+            Log.d(TAG, "Inference output from model $index: ${output[0].joinToString()}")
+            output[0]
+        }
+
+        // Average the outputs across all model folds.
+        val avgOutput = FloatArray(numClasses) { 0f }
+        outputs.forEach { output ->
+            for (i in output.indices) {
+                avgOutput[i] += output[i] / modelInterpreters.size
             }
+        }
+        Log.d(TAG, "Average output scores: ${avgOutput.joinToString()}")
 
-            Log.d(TAG, "Running inference on keypoint sequence of size: ${keypointSequence.size}")
-
-            val outputs = modelInterpreters.mapIndexed { index, interpreter ->
-                val output = Array(1) { FloatArray(numClasses) }
-                interpreter.run(input, output)
-                Log.d(TAG, "Inference output from model $index: ${output[0].joinToString()}")
-                output[0]
-            }
-
-            // Average the outputs across all model folds
-            val avgOutput = FloatArray(numClasses) { 0f }
-            outputs.forEach { output ->
-                for (i in output.indices) {
-                    avgOutput[i] += output[i] / modelInterpreters.size
-                }
-            }
-
-            // Log average output scores
-            Log.d(TAG, "Average output scores: ${avgOutput.joinToString()}")
-
-            val maxIdx = avgOutput.indices.maxByOrNull { avgOutput[it] } ?: -1
-            if (maxIdx >= 0 && labels.isNotEmpty()) {
-                Log.d(TAG, "Predicted label: ${labels[maxIdx]}")
-                labels[maxIdx]
-            } else {
-                Log.e(TAG, "Failed to predict label. Returning 'Prediction unavailable'")
-                "Prediction unavailable"
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error during inference: ${e.message}", e)
+        val maxIdx = avgOutput.indices.maxByOrNull { avgOutput[it] } ?: -1
+        return if (maxIdx >= 0 && labels.isNotEmpty()) {
+            Log.d(TAG, "Predicted label: ${labels[maxIdx]}")
+            labels[maxIdx]
+        } else {
+            Log.e(TAG, "Failed to predict label. Returning 'Prediction unavailable'")
             "Prediction unavailable"
         }
     }
@@ -486,7 +500,6 @@ class HandLandmarkerHelper(
         private const val MP_HAND_LANDMARKER_TASK = "hand_landmarker.task"
         private const val SEQUENCE_LENGTH = 60
         private const val NUM_KEYPOINTS_PER_HAND = 63
-        private const val NUM_KEYPOINTS = NUM_KEYPOINTS_PER_HAND * 2
 
         const val DELEGATE_CPU = 0
         const val DELEGATE_GPU = 1
