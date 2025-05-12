@@ -42,6 +42,11 @@ import java.io.File
 import java.io.IOException
 import org.json.JSONObject
 import java.util.Locale
+import android.widget.ScrollView
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.content.Context
 
 class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.LandmarkerListener {
 
@@ -61,10 +66,10 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
     private val handler = Handler(Looper.getMainLooper())
     private var resetRunnable: Runnable? = null
 
-    private lateinit var connectedUsernames: MutableList<String>
+    private lateinit var connectedUsers: MutableList<UserWithImage>
+    private lateinit var userSpinnerAdapter: UserSpinnerAdapter
     private val connectedEndpoints = mutableMapOf<String, String>() // Map of endpointId to username
-    private lateinit var adapter: ArrayAdapter<String>
-
+    
     private lateinit var participantCountTextView: TextView
 
     private val role = "Non Signers" // Role designation
@@ -77,8 +82,14 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
 
     private lateinit var textToSpeech: TextToSpeech  // TTS Object
     private var isTTSInitialized = false
+    private var isTTSEnabled = true  // Track if TTS is enabled by user
 
     private val predictionHistory = mutableListOf<String>() // To store individual predictions
+
+    private lateinit var messagesTextView: TextView
+    private val messagesBuilder = StringBuilder()
+    
+    private var myProfileImageBase64: String? = null // Store current user's profile image
 
     private val activityResultLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
         if (permissions.values.all { it }) {
@@ -95,6 +106,9 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
         setContentView(viewBinding.root)
 
         overlayView = findViewById(R.id.overlayView)
+
+        // Load profile image from SharedPreferences
+        loadProfileImage()
 
         // Back Button: Return to previous activity when clicked
         val backButton: ImageView = findViewById(R.id.back_icon)
@@ -133,20 +147,43 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
             Log.e("Vosk", "Failed to load the Vosk model", e)
         }
 
+        // Initialize Text-to-Speech switch
+        val ttsSwitch = findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.ttsSwitch)
+        ttsSwitch.setOnCheckedChangeListener { _, isChecked ->
+            isTTSEnabled = isChecked
+            if (isChecked) {
+                Toast.makeText(this, "Text-to-Speech enabled", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Text-to-Speech disabled", Toast.LENGTH_SHORT).show()
+                // Stop any ongoing speech
+                if (::textToSpeech.isInitialized) {
+                    textToSpeech.stop()
+                }
+            }
+        }
+
         // Initialize participant count TextView
         participantCountTextView = findViewById(R.id.participantCountTextView)
 
         // Initialize the connectedUsernames list and adapter first
-        connectedUsernames = mutableListOf("None", "All")
-        adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, connectedUsernames)
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        viewBinding.userSpinner.adapter = adapter
+        connectedUsers = mutableListOf(
+            UserWithImage("None"), 
+            UserWithImage("All")
+        )
+        
+        userSpinnerAdapter = UserSpinnerAdapter(
+            this,
+            R.layout.spinner_item_user,
+            connectedUsers
+        )
+        
+        viewBinding.userSpinner.adapter = userSpinnerAdapter
 
         // Update participant count dynamically
         updateParticipantCount()
 
         // Add listener to update participant count on change
-        adapter.registerDataSetObserver(object : DataSetObserver() {
+        userSpinnerAdapter.registerDataSetObserver(object : DataSetObserver() {
             override fun onChanged() {
                 updateParticipantCount()
             }
@@ -186,45 +223,56 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
             val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
             imm.hideSoftInputFromWindow(messageInput.windowToken, 0)
 
-            val selectedUser = viewBinding.userSpinner.selectedItem.toString()
-            val message = messageInput.text.toString().trim()
+            // Get the selected item position
+            val selectedPosition = viewBinding.userSpinner.selectedItemPosition
+            
+            // Check if the position is valid
+            if (selectedPosition >= 0 && selectedPosition < connectedUsers.size) {
+                val selectedUserObj = connectedUsers[selectedPosition]
+                val selectedUser = selectedUserObj.username
+                val message = messageInput.text.toString().trim()
 
-            if (message.isEmpty()) {
-                Toast.makeText(this@SignersToNonSignersActivity, "Message cannot be empty.", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
+                if (message.isEmpty()) {
+                    Toast.makeText(this@SignersToNonSignersActivity, "Message cannot be empty.", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+
+                if (selectedUser == "None") {
+                    Toast.makeText(this@SignersToNonSignersActivity, "No user selected.", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+
+                if (!isConnected) {
+                    Toast.makeText(this@SignersToNonSignersActivity, "Cannot send message. Devices are not connected.", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+
+                // Send the message to the selected user or all users
+                sendMessageToUser(message, selectedUser)
+
+                // Optionally clear the EditText after sending the message
+                messageInput.text.clear()
+            } else {
+                Toast.makeText(this@SignersToNonSignersActivity, "Invalid user selection.", Toast.LENGTH_SHORT).show()
             }
-
-            if (selectedUser == "None") {
-                Toast.makeText(this@SignersToNonSignersActivity, "No user selected.", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-
-            if (!isConnected) {
-                Toast.makeText(this@SignersToNonSignersActivity, "Cannot send message. Devices are not connected.", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-
-            // Send the message to the selected user or all users
-            sendMessageToUser(message, selectedUser)
-
-            // Optionally clear the EditText after sending the message
-            messageInput.text.clear()
         }
 
         // Add listener to the spinner (to handle "None" selection and stop predictions)
         viewBinding.userSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>, view: View?, position: Int, id: Long) {
-                val selectedUser = connectedUsernames[position]
-                Log.d(TAG, "User selected: $selectedUser")
+                if (position < connectedUsers.size) {
+                    val selectedUser = connectedUsers[position]
+                    Log.d(TAG, "User selected: ${selectedUser.username}")
 
-                if (selectedUser == "None") {
-                    // Stop hand detection and model predictions
-                    stopHandDetection()
-                    stopModelPrediction()
-                    Toast.makeText(this@SignersToNonSignersActivity, "Hand detection and predictions stopped.", Toast.LENGTH_SHORT).show()
-                } else {
-                    // Handle control update
-                    sendControlUpdate(selectedUser)
+                    if (selectedUser.username == "None") {
+                        // Stop hand detection and model predictions
+                        stopHandDetection()
+                        stopModelPrediction()
+                        Toast.makeText(this@SignersToNonSignersActivity, "Hand detection and predictions stopped.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        // Handle control update
+                        sendControlUpdate(selectedUser.username)
+                    }
                 }
             }
 
@@ -232,6 +280,9 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
                 // Do nothing if no selection
             }
         }
+
+        // Initialize the messages TextView
+        messagesTextView = findViewById(R.id.messagesTextView)
 
         // Request camera permissions
         if (allPermissionsGranted()) {
@@ -330,10 +381,17 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
 
                 Log.d(TAG, "Successfully connected to $endpointId")
 
-                // Send the current device's username to the connected endpoint
+                // Send the current device's username and profile image to the connected endpoint
                 val currentDeviceUsername = intent.getStringExtra("USERNAME") ?: "Unknown"
-                val payload = Payload.fromBytes("ROLE:$role,USERNAME:$currentDeviceUsername".toByteArray())
+                val profileData = if (myProfileImageBase64 != null) {
+                    "ROLE:$role,USERNAME:$currentDeviceUsername,PROFILE_IMAGE:$myProfileImageBase64"
+                } else {
+                    "ROLE:$role,USERNAME:$currentDeviceUsername"
+                }
+                
+                val payload = Payload.fromBytes(profileData.toByteArray())
                 connectionsClient.sendPayload(endpointId, payload)
+                Log.d(TAG, "Sent username: $currentDeviceUsername and profile image.")
 
             } else {
                 Log.e(TAG, "Connection failed to $endpointId")
@@ -374,9 +432,11 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
                             clearPrediction()
                         }
                         receivedData.startsWith("ROLE:") -> {
-                            // Extract role and username from the payload
-                            val role = receivedData.substringAfter("ROLE:", "").substringBefore(",")
-                            val username = receivedData.substringAfter("USERNAME:", "")
+                            // Parse message that includes role, username and potentially profile image
+                            val parts = receivedData.split(",")
+                            val role = parts.find { it.startsWith("ROLE:") }?.removePrefix("ROLE:")
+                            val username = parts.find { it.startsWith("USERNAME:") }?.removePrefix("USERNAME:")
+                            val profileImage = parts.find { it.startsWith("PROFILE_IMAGE:") }?.removePrefix("PROFILE_IMAGE:")
 
                             // Exclude devices with the same role (Non Signers)
                             if (role == this@SignersToNonSignersActivity.role) {
@@ -385,9 +445,10 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
                             }
 
                             // Add the device to connectedEndpoints and the spinner
-                            if (username.isNotEmpty()) {
+                            if (username != null && !username.isNullOrEmpty()) {
                                 connectedEndpoints[endpointId] = username
-                                addUserToSpinner(username)
+                                addUserToSpinner(username, endpointId, profileImage)
+                                updateParticipantCount()
                                 Log.d(TAG, "Added device with role $role and username $username")
                             } else {
                                 Log.e(TAG, "Invalid username extracted from payload: $receivedData")
@@ -403,11 +464,89 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
                             Log.d(TAG, "Received CONTROL message: $receivedData")
                         }
                         receivedData.startsWith("BROADCAST:") -> {
-                            // Ignore broadcast messages for other SignersToNonSignersActivity devices
-                            val broadcastMessage = receivedData.removePrefix("BROADCAST:")
-                            Log.d(TAG, "Received broadcast message: $broadcastMessage")
+                            // Display broadcast messages from deaf users in the messages TextView
+                            val parts = receivedData.split(":", limit = 3)
+                            if (parts.size == 3) {
+                                val senderUsername = parts[1]
+                                val message = parts[2]
+                                displayDeafUserMessage(senderUsername, message, "BROADCAST")
+                            } else {
+                                Log.e(TAG, "Invalid BROADCAST message format: $receivedData")
+                            }
+                        }
+                        receivedData.startsWith("TARGET:") -> {
+                            // Display targeted messages from deaf users in the messages TextView
+                            val parts = receivedData.split(":", limit = 4)
+                            if (parts.size >= 3) { // Changed to >= 3 to be more flexible
+                                try {
+                                    val targetUser = parts[1]
+                                    val senderUsername = parts[2]
+                                    val message = if (parts.size == 4) parts[3] else "" // Handle empty message
+                                    
+                                    // Only display if this user is the target or "All"
+                                    val currentUsername = intent.getStringExtra("USERNAME") ?: "Unknown"
+                                    if (targetUser == currentUsername || targetUser == "All") {
+                                        displayDeafUserMessage(senderUsername, message, "DIRECT")
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Error parsing TARGET message: $receivedData", e)
+                                }
+                            } else {
+                                Log.e(TAG, "Invalid TARGET message format: $receivedData")
+                            }
+                        }
+                        receivedData.startsWith("COMPLETE_TRANSLATION:") -> {
+                            // Handle complete translation messages
+                            val parts = receivedData.split(":", limit = 3)
+                            if (parts.size == 3) {
+                                val senderUsername = parts[1]
+                                val completeSentence = parts[2]
+                                
+                                // Create a message in the expected format but without the timestamp
+                                // The timestamp will be added in addToMessageHistory
+                                val displayMessage = "📝 $senderUsername completed translation: $completeSentence"
+                                
+                                // Add to message history - addToMessageHistory will add the timestamp
+                                addToMessageHistory(displayMessage)
+                                
+                                // If TTS is enabled, also speak the completed translation
+                                if (isTTSInitialized && isTTSEnabled) {
+                                    val textToSpeak = "$senderUsername says, $completeSentence"
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                                        textToSpeech.speak(textToSpeak, TextToSpeech.QUEUE_FLUSH, null, "complete_${System.currentTimeMillis()}")
+                                    } else {
+                                        @Suppress("DEPRECATION")
+                                        textToSpeech.speak(textToSpeak, TextToSpeech.QUEUE_FLUSH, null)
+                                    }
+                                }
+                                
+                                Log.d(TAG, "Displayed complete translation from $senderUsername: $completeSentence")
+                            } else {
+                                Log.e(TAG, "Invalid COMPLETE_TRANSLATION message format: $receivedData")
+                            }
                         }
                         else -> {
+                            // For direct messages from NonSignersToSigners that contain a colon
+                            if (receivedData.contains(":")) {
+                                try {
+                                    val parts = receivedData.split(":", limit = 2)
+                                    if (parts.size == 2) {
+                                        val senderUsername = parts[0]
+                                        val message = parts[1].trim()
+                                        
+                                        if (message.isNotEmpty() && !senderUsername.contains("ROLE") && 
+                                            !senderUsername.contains("MESSAGE") && !senderUsername.contains("USERNAME")) {
+                                            // Display simple formatted messages (these can come from NonSignersToSigners)
+                                            displayDeafUserMessage(senderUsername, message, "SIMPLE")
+                                            Log.d(TAG, "Displayed simple message: $senderUsername: $message")
+                                            return
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Error parsing simple message: $receivedData", e)
+                                }
+                            }
+                            
                             // Treat as a general message
                             Log.d(TAG, "General message received: $receivedData")
                             handleGeneralMessage(endpointId, receivedData)
@@ -451,9 +590,9 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
                         }
 
                         // Ensure the username is in the spinner
-                        if (!connectedUsernames.contains(normalizedMessage)) {
-                            connectedUsernames.add(normalizedMessage)
-                            adapter.notifyDataSetChanged()
+                        if (!connectedUsers.any { it.username == normalizedMessage }) {
+                            connectedUsers.add(UserWithImage(normalizedMessage))
+                            userSpinnerAdapter.notifyDataSetChanged()
                             Log.d(TAG, "Added general message to spinner: $message")
                         } else {
                             Log.d(TAG, "Message already exists in spinner: $message")
@@ -465,50 +604,140 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
             }
 
             // Further processing for specific commands or data
+            // Create a Boolean to track if we're already processing a model change
+            val isProcessingModelChange = Object()
+            var isCurrentlyProcessing = false
+
             inferenceExecutor.submit {
-                synchronized(this) {
-                    try {
-                        // Unload any previously loaded models
-                        handLandmarkerHelper?.unloadModels()
-
-                        // Initialize HandLandmarkerHelper if not already initialized
-                        if (handLandmarkerHelper == null) {
-                            handLandmarkerHelper = HandLandmarkerHelper(
-                                context = this@SignersToNonSignersActivity,
-                                runningMode = RunningMode.LIVE_STREAM,
-                                handLandmarkerHelperListener = this@SignersToNonSignersActivity
-                            )
+                synchronized(isProcessingModelChange) {
+                    // Check if we're already processing a model change
+                    if (isCurrentlyProcessing) {
+                        Log.d(TAG, "Skipping model change request, already processing another change")
+                        runOnUiThread {
+                            Toast.makeText(this@SignersToNonSignersActivity, 
+                                "Please wait until current category change completes", 
+                                Toast.LENGTH_SHORT).show()
                         }
+                        return@submit
+                    }
+                    isCurrentlyProcessing = true
+                }
 
-                        // Load the appropriate model based on the message
-                        // Remove known prefixes like "MESSAGE:" for processing
-                        val strippedMessage = message.removePrefix("MESSAGE:")
+                try {
+                    synchronized(this) {
+                        try {
+                            // Unload any previously loaded models
+                            try {
+                                handLandmarkerHelper?.unloadModels()
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error unloading models: ${e.message}")
+                                // Continue and try to create a new instance
+                            }
 
-                        // Process the message based on its stripped content
-                        when (strippedMessage) {
-                            "1" -> handLandmarkerHelper?.loadModelsAndLabels("alphabets")
-                            "2" -> handLandmarkerHelper?.loadModelsAndLabels("1-5")
-                            "3" -> handLandmarkerHelper?.loadModelsAndLabels("6-10")
-                            "4" -> handLandmarkerHelper?.loadModelsAndLabels("20-100")
-                            "5" -> handLandmarkerHelper?.loadModelsAndLabels("greetings")
-                            "6" -> handLandmarkerHelper?.loadModelsAndLabels("responses")
-                            "7" -> handLandmarkerHelper?.loadModelsAndLabels("family")
-                            "8" -> handLandmarkerHelper?.loadModelsAndLabels("colors")
-                            "9" -> handLandmarkerHelper?.loadModelsAndLabels("pronouns")
-                            "10" -> handLandmarkerHelper?.loadModelsAndLabels("nouns")
-                            "11" -> handLandmarkerHelper?.loadModelsAndLabels("verbs")
-                            "12" -> handLandmarkerHelper?.loadModelsAndLabels("school")
-                            "13" -> handLandmarkerHelper?.loadModelsAndLabels("weeks")
-                            "14" -> handLandmarkerHelper?.loadModelsAndLabels("time")
-                            "15" -> handLandmarkerHelper?.loadModelsAndLabels("questions")
-                            "16" -> handLandmarkerHelper?.loadModelsAndLabels("phrases")
-                            "17" -> handLandmarkerHelper?.loadModelsAndLabels("calendar")
-                            else -> Log.e(TAG, "Unknown model selection: $message")
+                            // Initialize HandLandmarkerHelper if not already initialized
+                            if (handLandmarkerHelper == null) {
+                                try {
+                                    handLandmarkerHelper = HandLandmarkerHelper(
+                                        context = this@SignersToNonSignersActivity,
+                                        runningMode = RunningMode.LIVE_STREAM,
+                                        handLandmarkerHelperListener = this@SignersToNonSignersActivity
+                                    )
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Error creating HandLandmarkerHelper: ${e.message}")
+                                    // Notify user about the error
+                                    runOnUiThread {
+                                        Toast.makeText(this@SignersToNonSignersActivity, 
+                                            "Failed to initialize hand detection. Try again.", 
+                                            Toast.LENGTH_SHORT).show()
+                                    }
+                                    return@synchronized
+                                }
+                            }
+
+                            // Load the appropriate model based on the message
+                            // Remove known prefixes like "MESSAGE:" for processing
+                            val strippedMessage = message.removePrefix("MESSAGE:")
+
+                            // Process the message based on its stripped content
+                            try {
+                                // Add small delay to ensure previous model is fully unloaded
+                                Thread.sleep(200)
+                                
+                                when (strippedMessage) {
+                                    "1" -> handLandmarkerHelper?.loadModelsAndLabels("alphabets")
+                                    "2" -> handLandmarkerHelper?.loadModelsAndLabels("1-5")
+                                    "3" -> handLandmarkerHelper?.loadModelsAndLabels("6-10")
+                                    "4" -> handLandmarkerHelper?.loadModelsAndLabels("20-100")
+                                    "5" -> handLandmarkerHelper?.loadModelsAndLabels("greetings")
+                                    "6" -> handLandmarkerHelper?.loadModelsAndLabels("responses")
+                                    "7" -> handLandmarkerHelper?.loadModelsAndLabels("family")
+                                    "8" -> handLandmarkerHelper?.loadModelsAndLabels("colors")
+                                    "9" -> handLandmarkerHelper?.loadModelsAndLabels("pronouns")
+                                    "10" -> handLandmarkerHelper?.loadModelsAndLabels("nouns")
+                                    "11" -> handLandmarkerHelper?.loadModelsAndLabels("verbs")
+                                    "12" -> handLandmarkerHelper?.loadModelsAndLabels("school")
+                                    "13" -> handLandmarkerHelper?.loadModelsAndLabels("weeks")
+                                    "14" -> handLandmarkerHelper?.loadModelsAndLabels("time")
+                                    "15" -> handLandmarkerHelper?.loadModelsAndLabels("questions")
+                                    "16" -> handLandmarkerHelper?.loadModelsAndLabels("phrases")
+                                    "17" -> handLandmarkerHelper?.loadModelsAndLabels("calendar")
+                                    else -> Log.e(TAG, "Unknown model selection: $message")
+                                }
+                                modelsLoaded = true
+                                // Notify user about successful model change
+                                runOnUiThread {
+                                    Toast.makeText(this@SignersToNonSignersActivity, 
+                                        "Category changed successfully", 
+                                        Toast.LENGTH_SHORT).show()
+                                }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error loading models for category $strippedMessage: ${e.message}", e)
+                                modelsLoaded = false
+                                // Attempt to recover by reinitializing the HandLandmarkerHelper
+                                try {
+                                    handLandmarkerHelper?.clearHandLandmarker()
+                                    handLandmarkerHelper = null
+                                    
+                                    // Wait a moment before recreating
+                                    Thread.sleep(300)
+                                    
+                                    handLandmarkerHelper = HandLandmarkerHelper(
+                                        context = this@SignersToNonSignersActivity,
+                                        runningMode = RunningMode.LIVE_STREAM,
+                                        handLandmarkerHelperListener = this@SignersToNonSignersActivity
+                                    )
+                                    
+                                    // Notify user about recovery attempt
+                                    runOnUiThread {
+                                        Toast.makeText(this@SignersToNonSignersActivity, 
+                                            "Recovered from error. Please try changing category again.", 
+                                            Toast.LENGTH_SHORT).show()
+                                    }
+                                } catch (e2: Exception) {
+                                    Log.e(TAG, "Failed recovery after model loading error: ${e2.message}", e2)
+                                    // Notify user about the error
+                                    runOnUiThread {
+                                        Toast.makeText(this@SignersToNonSignersActivity, 
+                                            "Failed to change category. Please restart the app.", 
+                                            Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error in model loading process: ${e.message}", e)
+                            modelsLoaded = false
+                            // Notify user about the error
+                            runOnUiThread {
+                                Toast.makeText(this@SignersToNonSignersActivity, 
+                                    "Error in sign detection setup. Please restart the application.", 
+                                    Toast.LENGTH_LONG).show()
+                            }
                         }
-                        modelsLoaded = true
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error loading models and labels: ${e.message}", e)
-                        modelsLoaded = false
+                    }
+                } finally {
+                    // Always reset processing flag when done
+                    synchronized(isProcessingModelChange) {
+                        isCurrentlyProcessing = false
                     }
                 }
             }
@@ -538,33 +767,91 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
             // Notify the user
             Toast.makeText(this, "Last predicted phrase removed.", Toast.LENGTH_SHORT).show()
 
-            // Resend updated (or empty) prediction
-            val selectedUser = viewBinding.userSpinner.selectedItem.toString()
-            sendPredictionToUser(selectedUser, forceSendEmpty = predictionHistory.isEmpty())
+            // Send the updated prediction (or empty) to all connected endpoints
+            // This ensures all devices are synchronized with the latest prediction state
+            broadcastUpdatedPrediction()
+        }
+    }
+    
+    private fun broadcastUpdatedPrediction() {
+        if (connectedEndpoints.isEmpty()) {
+            Log.e(TAG, "Cannot broadcast updated prediction: No connected endpoints.")
+            return
+        }
+        
+        val currentDeviceUsername = intent.getStringExtra("USERNAME") ?: "Unknown"
+        
+        // Get only the latest prediction or an empty string if there are none
+        val latestPrediction = if (predictionHistory.isNotEmpty()) {
+            predictionHistory.last()
+        } else {
+            ""
+        }
+        
+        // Create broadcast message with just the latest prediction
+        val payloadMessage = "BROADCAST_PREDICTION:$currentDeviceUsername:$latestPrediction"
+        
+        Log.d(TAG, "Broadcasting updated prediction: $payloadMessage")
+        
+        // Send to all connected endpoints to ensure everyone is in sync
+        for ((endpointId, username) in connectedEndpoints) {
+            connectionsClient.sendPayload(endpointId, Payload.fromBytes(payloadMessage.toByteArray()))
+                .addOnSuccessListener {
+                    Log.d(TAG, "Updated prediction (latest only) broadcasted to $username: '$latestPrediction'")
+                }
+                .addOnFailureListener { e ->
+                    Log.e(TAG, "Failed to broadcast updated prediction (latest only) to $username: '$latestPrediction'", e)
+                }
         }
     }
 
     private fun stopHandDetection() {
         runOnUiThread {
             if (handLandmarkerHelper != null) {
+                // Get the current sentence prediction text before stopping
+                val currentSentence = sentenceBuilder.toString().trim()
+                
+                // Broadcast the full sentence as a final translation if there is content
+                if (currentSentence.isNotEmpty()) {
+                    val currentDeviceUsername = intent.getStringExtra("USERNAME") ?: "Unknown"
+                    // Format a message with the complete sentence for the chat history
+                    val completeSentenceMessage = "COMPLETE_TRANSLATION:$currentDeviceUsername:$currentSentence"
+                    
+                    // Send to all connected endpoints
+                    for ((endpointId, username) in connectedEndpoints) {
+                        connectionsClient.sendPayload(endpointId, Payload.fromBytes(completeSentenceMessage.toByteArray()))
+                            .addOnSuccessListener {
+                                Log.d(TAG, "Complete sentence broadcasted to $username: '$currentSentence'")
+                            }
+                            .addOnFailureListener { e ->
+                                Log.e(TAG, "Failed to broadcast complete sentence to $username: '$currentSentence'", e)
+                            }
+                    }
+                    
+                    // Add to local chat history too
+                    val timestamp = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+                    val displayMessage = "[$timestamp] 📝 You completed translation: $currentSentence"
+                    addToMessageHistory(displayMessage)
+                }
+                
+                // Now stop hand detection and unload models
                 handLandmarkerHelper?.unloadModels()
                 handLandmarkerHelper = null
                 modelsLoaded = false
+                
+                // Clear the prediction display
+                sentenceBuilder.clear()
+                predictionHistory.clear()
+                sentenceTextView.text = "Prediction: "
+                
                 Toast.makeText(this, "Hand detection stopped.", Toast.LENGTH_SHORT).show()
                 Log.d(TAG, "Hand detection models unloaded successfully.")
             }
         }
     }
 
-    private fun addUserToSpinner(username: String) {
+    private fun addUserToSpinner(username: String, endpointId: String, profileImageBase64: String? = null) {
         runOnUiThread {
-
-            // Exclude entries with "MESSAGE:" prefix
-            if (username.startsWith("MESSAGE:")) {
-                Log.d(TAG, "Skipping MESSAGE: entry, not adding to spinner: $username")
-                return@runOnUiThread
-            }
-
             // Retrieve the current device's username
             val currentDeviceUsername = intent.getStringExtra("USERNAME") ?: "Unknown"
 
@@ -581,22 +868,37 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
                 return@runOnUiThread
             }
 
-            // Add the cleaned-up username to the spinner if it's not already present
-            if (!connectedUsernames.contains(username)) {
-                connectedUsernames.add(username)
-                adapter.notifyDataSetChanged()
-                Log.d(TAG, "Added username to spinner: $username")
+            // Check if user already exists in the list
+            val existingUserIndex = connectedUsers.indexOfFirst { it.username == username && it.username != "None" && it.username != "All" }
+            
+            if (existingUserIndex != -1) {
+                // Update existing user's profile image if needed
+                if (profileImageBase64 != null) {
+                    connectedUsers[existingUserIndex] = connectedUsers[existingUserIndex].copy(
+                        profileImageBase64 = profileImageBase64
+                    )
+                }
+            } else {
+                // Add new user to the list
+                connectedUsers.add(UserWithImage(
+                    username = username,
+                    profileImageBase64 = profileImageBase64,
+                    endpointId = endpointId,
+                    role = "Signers"
+                ))
             }
+            
+            // Notify adapter of changes
+            userSpinnerAdapter.notifyDataSetChanged()
+            Log.d(TAG, "Added or updated username in spinner: $username")
         }
     }
 
     private fun removeUserFromSpinner(username: String) {
         runOnUiThread {
-            if (connectedUsernames.contains(username)) {
-                connectedUsernames.remove(username)
-                adapter.notifyDataSetChanged()
-                Log.d(TAG, "Removed username from spinner: $username")
-            }
+            connectedUsers.removeIf { it.username == username && it.username != "None" && it.username != "All" }
+            userSpinnerAdapter.notifyDataSetChanged()
+            Log.d(TAG, "Removed username from spinner: $username")
         }
     }
 
@@ -637,17 +939,28 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
 
         var messageSent = false
 
+        // Also display the outgoing message in our own chat history
+        val timestamp = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+        val displayMessage = if (selectedUser == "All") {
+            "[$timestamp] 📤 $currentDeviceUsername → All: $message"
+        } else {
+            "[$timestamp] 📤 $currentDeviceUsername → $selectedUser: $message"
+        }
+        
+        // Add to message history
+        addToMessageHistory(displayMessage)
+
         if (selectedUser == "All") {
-            for ((endpointId, username) in connectedEndpoints) {
+            for (endpointId in connectedEndpoints.keys) {
                 connectionsClient.sendPayload(endpointId, Payload.fromBytes(payloadMessage.toByteArray()))
                     .addOnSuccessListener {
-                        Log.d(TAG, "Message broadcasted to $username: $message")
+                        Log.d(TAG, "Message broadcasted to endpoint: $endpointId, message: $message")
                     }
                     .addOnFailureListener { e ->
-                        Log.e(TAG, "Failed to broadcast message to $username: $message", e)
+                        Log.e(TAG, "Failed to broadcast message to endpoint: $endpointId, error: ${e.message}")
                     }
             }
-            messageSent = true
+            messageSent = !connectedEndpoints.isEmpty()
         } else {
             val targetEndpointId = connectedEndpoints.filterValues { it == selectedUser }.keys.firstOrNull()
             if (targetEndpointId != null) {
@@ -668,9 +981,102 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
         }
     }
 
+    // Helper method to add messages to history and update UI
+    private fun addToMessageHistory(message: String) {
+        runOnUiThread {
+            val currentUsername = intent.getStringExtra("USERNAME") ?: "Unknown"
+            val timestamp = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+            
+            // Format the message based on who sent it and message type
+            val formattedMessage = when {
+                // Messages sent by the current device user (outgoing messages)
+                message.contains("$currentUsername → All:") -> {
+                    val content = message.substringAfter("$currentUsername → All:")
+                    "[$timestamp] <div style='text-align: right; color: #4B1F4E;'><b>You → All:</b>$content</div>"
+                }
+                message.contains("$currentUsername → ") -> {
+                    val parts = message.substringAfter("$currentUsername → ").split(":", limit = 2)
+                    val recipient = parts[0]
+                    val content = if (parts.size > 1) parts[1] else ""
+                    "[$timestamp] <div style='text-align: right; color: #4B1F4E;'><b>You → $recipient:</b>$content</div>"
+                }
+                // Completed translation messages
+                message.contains("📝") && message.contains("completed translation:") -> {
+                    // Preserve existing timestamp in the message to avoid duplicates
+                    if (message.startsWith("[") && message.contains("]")) {
+                        // Message already has a timestamp, use it as is
+                        message
+                    } else {
+                        // Add timestamp if it doesn't have one
+                        "[$timestamp] $message"
+                    }
+                }
+                // Incoming messages from deaf users
+                message.contains("📢") && message.contains(":") -> {
+                    val sender = message.substringAfter("[").substringAfter("]").trim().substringAfter("📢").trim().substringBefore(":")
+                    val content = message.substringAfter("$sender:")
+                    "[$timestamp] <div style='text-align: left;'><b>$sender:</b>$content 📢</div>"
+                }
+                message.contains("💬") && message.contains(":") -> {
+                    val sender = message.substringAfter("[").substringAfter("]").trim().substringAfter("💬").trim().substringBefore(":")
+                    val content = message.substringAfter("$sender:")
+                    "[$timestamp] <div style='text-align: left;'><b>$sender:</b>$content 💬</div>"
+                }
+                message.contains("📩") && message.contains(":") -> {
+                    val sender = message.substringAfter("[").substringAfter("]").trim().substringAfter("📩").trim().substringBefore(":")
+                    val content = message.substringAfter("$sender:")
+                    "[$timestamp] <div style='text-align: left;'><b>$sender:</b>$content 📩</div>"
+                }
+                // System messages or other unrecognized formats - center alignment
+                else -> {
+                    "[$timestamp] <div style='text-align: center; color: #888888;'>$message</div>"
+                }
+            }
+            
+            // Append the new message with a line break
+            if (messagesBuilder.isNotEmpty()) {
+                messagesBuilder.append("\n")
+            }
+            messagesBuilder.append(formattedMessage)
+            
+            // Update the TextView with HTML formatting
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                messagesTextView.text = android.text.Html.fromHtml(messagesBuilder.toString(), android.text.Html.FROM_HTML_MODE_COMPACT)
+            } else {
+                @Suppress("DEPRECATION")
+                messagesTextView.text = android.text.Html.fromHtml(messagesBuilder.toString())
+            }
+            
+            // Enhanced auto-scrolling to the bottom
+            val scrollView = findViewById<ScrollView>(R.id.messagesScrollView)
+            
+            // Clear any pending posts to ensure we don't have multiple scroll operations queued
+            scrollView.removeCallbacks(null)
+            
+            // Immediate scroll attempt
+            scrollView.post {
+                // Force layout to calculate correct scroll height
+                scrollView.fullScroll(ScrollView.FOCUS_DOWN)
+                
+                // Secondary scroll with slight delay to ensure layout is complete
+                scrollView.postDelayed({
+                    // Forcibly update scroll position to bottom
+                    scrollView.smoothScrollTo(0, scrollView.getChildAt(0).height)
+                    
+                    // Final backup scroll attempt
+                    scrollView.postDelayed({
+                        scrollView.fullScroll(ScrollView.FOCUS_DOWN)
+                        // Force invalidate to ensure UI is updated
+                        scrollView.invalidate()
+                    }, 150)
+                }, 50)
+            }
+        }
+    }
+
     private fun logEndpointState() {
         Log.d(TAG, "Connected endpoints: $connectedEndpoints")
-        Log.d(TAG, "Spinner usernames: $connectedUsernames")
+        Log.d(TAG, "Spinner usernames: $connectedUsers")
     }
 
     private fun startCamera() {
@@ -681,12 +1087,65 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
                 it.setSurfaceProvider(viewBinding.previewView.surfaceProvider)
             }
 
-            val imageAnalyzer = ImageAnalysis.Builder().build().also {
+            val imageAnalyzer = ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST) // Only process latest frame
+                .build().also {
                 it.setAnalyzer(cameraExecutor) { imageProxy ->
                     try {
                         // Only detect when models are loaded and connected
                         if (modelsLoaded && handLandmarkerHelper != null && isConnected) {
-                            handLandmarkerHelper?.detectLiveStream(imageProxy, isFrontCamera = false)
+                            try {
+                                handLandmarkerHelper?.detectLiveStream(imageProxy, isFrontCamera = false)
+                            } catch (e: IllegalStateException) {
+                                // This can happen when switching categories while collecting keypoints
+                                Log.w(TAG, "HandLandmarker was in a bad state during detection: ${e.message}")
+                                // Clear any existing model state
+                                synchronized(this@SignersToNonSignersActivity) {
+                                    try {
+                                        handLandmarkerHelper?.clearHandLandmarker()
+                                        
+                                        // Force a delay to allow the system to stabilize before recreating
+                                        Handler(Looper.getMainLooper()).postDelayed({
+                                            if (!isFinishing) {
+                                                // Try to recreate the helper with the current model
+                                                try {
+                                                    handLandmarkerHelper = HandLandmarkerHelper(
+                                                        context = this@SignersToNonSignersActivity,
+                                                        runningMode = RunningMode.LIVE_STREAM,
+                                                        handLandmarkerHelperListener = this@SignersToNonSignersActivity
+                                                    )
+                                                    Log.d(TAG, "Successfully recreated HandLandmarkerHelper after error")
+                                                } catch (e: Exception) {
+                                                    Log.e(TAG, "Failed to recreate HandLandmarkerHelper: ${e.message}")
+                                                    // If recreation fails multiple times, show a message to restart app
+                                                    Handler(Looper.getMainLooper()).postDelayed({
+                                                        if (!isFinishing) {
+                                                            try {
+                                                                handLandmarkerHelper = HandLandmarkerHelper(
+                                                                    context = this@SignersToNonSignersActivity,
+                                                                    runningMode = RunningMode.LIVE_STREAM,
+                                                                    handLandmarkerHelperListener = this@SignersToNonSignersActivity
+                                                                )
+                                                                Log.d(TAG, "Second attempt to recreate HandLandmarkerHelper successful")
+                                                            } catch (e: Exception) {
+                                                                Log.e(TAG, "Second attempt to recreate HandLandmarkerHelper failed: ${e.message}")
+                                                                Toast.makeText(this@SignersToNonSignersActivity, 
+                                                                    "Hand detection issue detected. Please restart the app if problems persist.", 
+                                                                    Toast.LENGTH_LONG).show()
+                                                            }
+                                                        }
+                                                    }, 1000) // Try again after 1 second
+                                                }
+                                            }
+                                        }, 500) // Half second delay
+                                    } catch (e: Exception) {
+                                        Log.e(TAG, "Error during HandLandmarker recovery: ${e.message}", e)
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "General error during hand detection: ${e.message}", e)
+                                // Do not recreate helper here, just log the error
+                            }
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Error analyzing image stream: ${e.message}", e)
@@ -832,14 +1291,73 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
 
     override fun onDestroy() {
         super.onDestroy()
-        cameraExecutor.shutdown()
-        inferenceExecutor.shutdown()
-        handLandmarkerHelper?.clearHandLandmarker()
-        handLandmarkerHelper = null
+        
+        // Clean up the reset runnable if it exists
+        resetRunnable?.let { handler.removeCallbacks(it) }
+        
+        // First, ensure we stop camera-related activities
+        try {
+            val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+            cameraProviderFuture.get()?.unbindAll()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error unbinding camera: ${e.message}", e)
+        }
+        
+        // Clear model resources
+        try {
+            synchronized(this) {
+                handLandmarkerHelper?.clearHandLandmarker()
+                handLandmarkerHelper?.unloadModels()
+                handLandmarkerHelper = null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error clearing hand landmarker: ${e.message}", e)
+        }
+        
+        // Shut down executors
+        try {
+            cameraExecutor.shutdown()
+            try {
+                if (!cameraExecutor.awaitTermination(500, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                    cameraExecutor.shutdownNow()
+                }
+            } catch (e: InterruptedException) {
+                cameraExecutor.shutdownNow()
+            }
+            
+            inferenceExecutor.shutdown()
+            try {
+                if (!inferenceExecutor.awaitTermination(500, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                    inferenceExecutor.shutdownNow()
+                }
+            } catch (e: InterruptedException) {
+                inferenceExecutor.shutdownNow()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error shutting down executors: ${e.message}", e)
+        }
 
-        if (::textToSpeech.isInitialized) {
-            textToSpeech.stop()
-            textToSpeech.shutdown()
+        // Clean up speech and TTS resources
+        try {
+            if (speechService != null) {
+                speechService?.stop()
+                speechService = null
+            }
+            
+            if (::textToSpeech.isInitialized) {
+                textToSpeech.stop()
+                textToSpeech.shutdown()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cleaning up speech resources: ${e.message}", e)
+        }
+        
+        // Disconnect from Nearby Connections
+        try {
+            stopDiscovering()
+            disconnectFromEndpoint()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error disconnecting from endpoints: ${e.message}", e)
         }
     }
 
@@ -883,8 +1401,18 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
                 resetTimer()
 
                 // Send the updated sentence prediction to connected devices
-                val selectedUser = viewBinding.userSpinner.selectedItem.toString()
-                sendPredictionToUser(selectedUser)
+                // Get the selected item position
+                val selectedPosition = viewBinding.userSpinner.selectedItemPosition
+                
+                // Check if the position is valid
+                if (selectedPosition >= 0 && selectedPosition < connectedUsers.size) {
+                    val selectedUserObj = connectedUsers[selectedPosition]
+                    val selectedUser = selectedUserObj.username
+                    sendPredictionToUser(selectedUser)
+                } else {
+                    Log.e(TAG, "Invalid spinner position for prediction sending")
+                    Toast.makeText(this, "Could not determine selected user for prediction", Toast.LENGTH_SHORT).show()
+                }
             } else {
                 sentenceTextView.text = "Prediction Unavailable"
             }
@@ -912,50 +1440,61 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
 
         val currentDeviceUsername = intent.getStringExtra("USERNAME") ?: "Unknown"
 
-        // Get full sentence from sentenceTextView
-        var fullSentence = sentenceTextView.text.toString().removePrefix("Prediction: ").trim()
-
+        // Get only the latest prediction, not the full sentence
+        val latestPrediction = if (predictionHistory.isNotEmpty()) {
+            predictionHistory.last()
+        } else {
+            ""
+        }
+        
         // Ensure empty predictions can be sent if forced
-        if (fullSentence.isBlank() && !forceSendEmpty) {
+        if (latestPrediction.isBlank() && !forceSendEmpty) {
             Toast.makeText(this, "No prediction to send.", Toast.LENGTH_SHORT).show()
             return
         }
 
         // If forced, explicitly send an empty string
-        if (forceSendEmpty) {
-            fullSentence = ""
-        }
+        val finalPrediction = if (forceSendEmpty) "" else latestPrediction
 
         val payloadMessage = if (selectedUser == "All") {
-            "BROADCAST_PREDICTION:$currentDeviceUsername:$fullSentence"
+            "BROADCAST_PREDICTION:$currentDeviceUsername:$finalPrediction"
         } else {
-            "PREDICTION:$currentDeviceUsername:$fullSentence"
+            "PREDICTION:$currentDeviceUsername:$finalPrediction"
         }
 
+        Log.d(TAG, "Sending prediction message: $payloadMessage")
         var predictionSent = false
 
         if (selectedUser == "All") {
             for ((endpointId, username) in connectedEndpoints) {
                 connectionsClient.sendPayload(endpointId, Payload.fromBytes(payloadMessage.toByteArray()))
                     .addOnSuccessListener {
-                        Log.d(TAG, "Prediction broadcasted to $username: '$fullSentence'")
+                        Log.d(TAG, "Latest prediction broadcasted to $username: '$finalPrediction'")
                     }
                     .addOnFailureListener { e ->
-                        Log.e(TAG, "Failed to broadcast prediction to $username: '$fullSentence'", e)
+                        Log.e(TAG, "Failed to broadcast latest prediction to $username: '$finalPrediction'", e)
                     }
             }
-            predictionSent = true
+            predictionSent = !connectedEndpoints.isEmpty()
         } else {
-            val targetEndpointId = connectedEndpoints.filterValues { it == selectedUser }.keys.firstOrNull()
-            if (targetEndpointId != null) {
-                connectionsClient.sendPayload(targetEndpointId, Payload.fromBytes(payloadMessage.toByteArray()))
-                    .addOnSuccessListener {
-                        Log.d(TAG, "Prediction sent to $selectedUser: '$fullSentence'")
-                    }
-                    .addOnFailureListener { e ->
-                        Log.e(TAG, "Failed to send prediction to $selectedUser: '$fullSentence'", e)
-                    }
+            // Find the endpoint ID that corresponds to the selected username
+            val targetEndpointIds = connectedEndpoints.entries
+                .filter { it.value == selectedUser }
+                .map { it.key }
+                
+            if (targetEndpointIds.isNotEmpty()) {
+                for (endpointId in targetEndpointIds) {
+                    connectionsClient.sendPayload(endpointId, Payload.fromBytes(payloadMessage.toByteArray()))
+                        .addOnSuccessListener {
+                            Log.d(TAG, "Latest prediction sent to $selectedUser (endpoint: $endpointId): '$finalPrediction'")
+                        }
+                        .addOnFailureListener { e ->
+                            Log.e(TAG, "Failed to send latest prediction to $selectedUser (endpoint: $endpointId): '$finalPrediction'", e)
+                        }
+                }
                 predictionSent = true
+            } else {
+                Log.e(TAG, "No endpoint found for selected user: $selectedUser")
             }
         }
 
@@ -994,10 +1533,10 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
 
             // Clear the map and update the UI
             connectedEndpoints.clear()
-            connectedUsernames.clear()
-            connectedUsernames.add("None")
-            connectedUsernames.add("All")
-            adapter.notifyDataSetChanged()
+            connectedUsers.clear()
+            connectedUsers.add(UserWithImage("None"))
+            connectedUsers.add(UserWithImage("All"))
+            userSpinnerAdapter.notifyDataSetChanged()
             updateParticipantCount()
         } else {
             Log.d(TAG, "No active connections to disconnect.")
@@ -1013,6 +1552,63 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
 
         // Allow the default back action (finish activity)
         super.onBackPressed()
+    }
+
+    // Method to display messages from deaf users
+    private fun displayDeafUserMessage(senderUsername: String, message: String, messageType: String) {
+        val timestamp = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+        val formattedMessage = when (messageType) {
+            "BROADCAST" -> "[$timestamp] 📢 $senderUsername: $message"
+            "DIRECT" -> "[$timestamp] 💬 $senderUsername: $message"
+            "SIMPLE" -> "[$timestamp] 📩 $senderUsername: $message"
+            else -> "[$timestamp] $senderUsername: $message"
+        }
+        
+        // Use the common helper method to add to history and update UI
+        addToMessageHistory(formattedMessage)
+        
+        // Use text-to-speech to speak the message aloud if enabled by user
+        if (isTTSInitialized && isTTSEnabled && message.isNotEmpty()) {
+            val textToSpeak = "$senderUsername says, $message"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                textToSpeech.speak(textToSpeak, TextToSpeech.QUEUE_FLUSH, null, "msg_${System.currentTimeMillis()}")
+            } else {
+                @Suppress("DEPRECATION")
+                textToSpeech.speak(textToSpeak, TextToSpeech.QUEUE_FLUSH, null)
+            }
+        }
+        
+        // Vibrate to notify about the new message
+        val vibrator = getSystemService(VIBRATOR_SERVICE) as Vibrator
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(100)
+        }
+    }
+
+    // Load profile image from SharedPreferences
+    private fun loadProfileImage() {
+        val sharedPreferences = getSharedPreferences("UserProfile", Context.MODE_PRIVATE)
+        val profileImageUri = sharedPreferences.getString("profileImage", null)
+        
+        if (profileImageUri != null) {
+            try {
+                // Convert URI to Bitmap
+                val imageUri = Uri.parse(profileImageUri)
+                val inputStream = contentResolver.openInputStream(imageUri)
+                val bitmap = BitmapFactory.decodeStream(inputStream)
+                inputStream?.close()
+                
+                // Convert bitmap to base64 for transmission
+                myProfileImageBase64 = UserWithImage.bitmapToBase64(bitmap)
+                Log.d(TAG, "Profile image loaded and converted to base64")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading profile image: ${e.message}")
+                myProfileImageBase64 = null
+            }
+        }
     }
 
     companion object {

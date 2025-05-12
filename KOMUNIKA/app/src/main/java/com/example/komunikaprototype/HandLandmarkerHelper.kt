@@ -56,206 +56,227 @@ class HandLandmarkerHelper(
     @Synchronized
     fun loadModelsAndLabels(category: String) {
         // Unload any previous models to avoid memory leaks.
-        unloadModels()
-
-        // Set the number of hands to detect based on the category.
-        if (category in listOf("alphabets", "1-5", "6-10", "20-100")) {
-            detectionNumHands = 1
-        } else {
-            detectionNumHands = DEFAULT_NUM_HANDS
-        }
-        // Reinitialize the hand landmarker so that the new detectionNumHands is applied.
-        clearHandLandmarker()
-        setupHandLandmarker()
-
-        Log.d(TAG, "Loading models for category: $category")
-        val tfliteOptions = Interpreter.Options().apply {
-            addDelegate(FlexDelegate()) // Support custom TensorFlow operations.
-        }
-
         try {
-            when (category) {
-                "alphabets" -> {
-                    val modelFile = "alphabets_model_fold_1.tflite"
-                    modelInterpreters = listOf(
-                        Interpreter(loadModelFile(modelFile), tfliteOptions).also {
-                            Log.d(TAG, "Loading model file: $modelFile")
-                        }
-                    )
-                    labels = loadLabels("merged_alphabets_labels.txt")
-                    numClasses = labels.size
-                }
-                "1-5" -> {
-                    val modelFile = "1-5_model_fold_2.tflite"
-                    modelInterpreters = listOf(
-                        Interpreter(loadModelFile(modelFile), tfliteOptions).also {
-                            Log.d(TAG, "Loading model file: $modelFile")
-                        }
-                    )
-                    labels = loadLabels("1-5_labels.txt")
-                    numClasses = labels.size
-                }
-                "6-10" -> {
-                    val modelFile = "6-10_model_fold_2.tflite"
-                    modelInterpreters = listOf(
-                        Interpreter(loadModelFile(modelFile), tfliteOptions).also {
-                            Log.d(TAG, "Loading model file: $modelFile")
-                        }
-                    )
-                    labels = loadLabels("6-10_labels.txt")
-                    numClasses = labels.size
-                }
-                "20-100" -> {
-                    val modelFile = "20-100_model_fold_2.tflite"
-                    modelInterpreters = listOf(
-                        Interpreter(loadModelFile(modelFile), tfliteOptions).also {
-                            Log.d(TAG, "Loading model file: $modelFile")
-                        }
-                    )
-                    labels = loadLabels("20-100_labels.txt")
-                    numClasses = labels.size
-                }
-                "greetings" -> {
-                    val modelFile = "Greetings_model_fold_3.tflite"
-                    modelInterpreters = listOf(
-                        Interpreter(loadModelFile(modelFile), tfliteOptions).also {
-                            Log.d(TAG, "Loading model file: $modelFile")
-                        }
-                    )
-                    labels = loadLabels("greetings_labels.txt")
-                    numClasses = labels.size
-                }
-                "responses" -> {
-                    val modelFile = "Responses_model_fold_5.tflite"
-                    modelInterpreters = listOf(
-                        Interpreter(loadModelFile(modelFile), tfliteOptions).also {
-                            Log.d(TAG, "Loading model file: $modelFile")
-                        }
-                    )
-                    labels = loadLabels("responses_labels.txt")
-                    numClasses = labels.size
-                }
-                "family" -> {
-                    val modelFile = "Family_model_fold_3.tflite"
-                    modelInterpreters = listOf(
-                        Interpreter(loadModelFile(modelFile), tfliteOptions).also {
-                            Log.d(TAG, "Loading model file: $modelFile")
-                        }
-                    )
-                    labels = loadLabels("family_labels.txt")
-                    numClasses = labels.size
-                }
-                "colors" -> {
-                    val modelFile = "Colors_model_fold_3.tflite"
-                    modelInterpreters = listOf(
-                        Interpreter(loadModelFile(modelFile), tfliteOptions).also {
-                            Log.d(TAG, "Loading model file: $modelFile")
-                        }
-                    )
-                    labels = loadLabels("colors_labels.txt")
-                    numClasses = labels.size
-                }
-                "pronouns" -> {
-                    val modelFile = "Pronouns_model_fold_1.tflite"
-                    modelInterpreters = listOf(
-                        Interpreter(loadModelFile(modelFile), tfliteOptions).also {
-                            Log.d(TAG, "Loading model file: $modelFile")
-                        }
-                    )
-                    labels = loadLabels("pronouns_labels.txt")
-                    numClasses = labels.size
-                }
-                "nouns" -> {
-                    val modelFile = "Nouns_model_fold_4.tflite"
-                    modelInterpreters = listOf(
-                        Interpreter(loadModelFile(modelFile), tfliteOptions).also {
-                            Log.d(TAG, "Loading model file: $modelFile")
-                        }
-                    )
-                    labels = loadLabels("nouns_labels.txt")
-                    numClasses = labels.size
-                }
-                "verbs" -> {
-                    val modelFile = "Verbs_model_fold_2.tflite"
-                    modelInterpreters = listOf(
-                        Interpreter(loadModelFile(modelFile), tfliteOptions).also {
-                            Log.d(TAG, "Loading model file: $modelFile")
-                        }
-                    )
-                    labels = loadLabels("verbs_labels.txt")
-                    numClasses = labels.size
-                }
-                "school" -> {
-                    val modelFile = "School_model_fold_3.tflite"
-                    modelInterpreters = listOf(
-                        Interpreter(loadModelFile(modelFile), tfliteOptions).also {
-                            Log.d(TAG, "Loading model file: $modelFile")
-                        }
-                    )
-                    labels = loadLabels("school_labels.txt")
-                    numClasses = labels.size
-                }
-                "calendar" -> { // Not yet implemented
-                    val modelFile = "Calendar_model_fold_2.tflite"
-                    modelInterpreters = listOf(
-                        Interpreter(loadModelFile(modelFile), tfliteOptions).also {
-                            Log.d(TAG, "Loading model file: $modelFile")
-                        }
-                    )
-                    labels = loadLabels("months_labels.txt")
-                    numClasses = labels.size
-                }
-                "weeks" -> {
-                    val modelFile = "Weeks_model_fold_5.tflite"
-                    modelInterpreters = listOf(
-                        Interpreter(loadModelFile(modelFile), tfliteOptions).also {
-                            Log.d(TAG, "Loading model file: $modelFile")
-                        }
-                    )
-                    labels = loadLabels("weeks_labels.txt")
-                    numClasses = labels.size
-                }
-                "time" -> {
-                    val modelFile = "Time_model_fold_2.tflite"
-                    modelInterpreters = listOf(
-                        Interpreter(loadModelFile(modelFile), tfliteOptions).also {
-                            Log.d(TAG, "Loading model file: $modelFile")
-                        }
-                    )
-                    labels = loadLabels("time_labels.txt")
-                    numClasses = labels.size
-                }
-                "questions" -> {
-                    val modelFile = "Questions_model_fold_5.tflite"
-                    modelInterpreters = listOf(
-                        Interpreter(loadModelFile(modelFile), tfliteOptions).also {
-                            Log.d(TAG, "Loading model file: $modelFile")
-                        }
-                    )
-                    labels = loadLabels("questions_labels.txt")
-                    numClasses = labels.size
-                }
-                "phrases" -> {
-                    val modelFile = "Phrases_model_fold_4.tflite"
-                    modelInterpreters = listOf(
-                        Interpreter(loadModelFile(modelFile), tfliteOptions).also {
-                            Log.d(TAG, "Loading model file: $modelFile")
-                        }
-                    )
-                    labels = loadLabels("phrases_labels.txt")
-                    numClasses = labels.size
-                }
-                else -> {
-                    Log.e(TAG, "Unknown model category: $category")
-                    return
-                }
+            unloadModels()
+            
+            // Clear keypoint buffer to prevent using keypoints from previous category
+            keypointSequenceBuffer.clear()
+            
+            // Set the number of hands to detect based on the category.
+            if (category in listOf("alphabets", "1-5", "6-10", "20-100")) {
+                detectionNumHands = 1
+            } else {
+                detectionNumHands = DEFAULT_NUM_HANDS
+            }
+            
+            // Reinitialize the hand landmarker so that the new detectionNumHands is applied.
+            try {
+                clearHandLandmarker()
+                setupHandLandmarker()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error resetting HandLandmarker: ${e.message}", e)
+                // Try to initialize again with a slight delay
+                Thread.sleep(100)
+                setupHandLandmarker()
             }
 
-            Log.d(TAG, "Successfully loaded ${modelInterpreters.size} models for category: $category")
-            Log.d(TAG, "Successfully loaded ${labels.size} labels for category: $category")
-            labels.forEachIndexed { index, label -> Log.d(TAG, "Label $index: $label") }
+            Log.d(TAG, "Loading models for category: $category")
+            val tfliteOptions = Interpreter.Options().apply {
+                addDelegate(FlexDelegate()) // Support custom TensorFlow operations.
+                // Note: setErrorReporter is not available in this TFLite version
+            }
+
+            try {
+                when (category) {
+                    "alphabets" -> {
+                        val modelFile = "alphabets_model_fold_1.tflite"
+                        modelInterpreters = listOf(
+                            Interpreter(loadModelFile(modelFile), tfliteOptions).also {
+                                Log.d(TAG, "Loading model file: $modelFile")
+                            }
+                        )
+                        labels = loadLabels("merged_alphabets_labels.txt")
+                        numClasses = labels.size
+                    }
+                    "1-5" -> {
+                        val modelFile = "1-5_model_fold_2.tflite"
+                        modelInterpreters = listOf(
+                            Interpreter(loadModelFile(modelFile), tfliteOptions).also {
+                                Log.d(TAG, "Loading model file: $modelFile")
+                            }
+                        )
+                        labels = loadLabels("1-5_labels.txt")
+                        numClasses = labels.size
+                    }
+                    "6-10" -> {
+                        val modelFile = "6-10_model_fold_2.tflite"
+                        modelInterpreters = listOf(
+                            Interpreter(loadModelFile(modelFile), tfliteOptions).also {
+                                Log.d(TAG, "Loading model file: $modelFile")
+                            }
+                        )
+                        labels = loadLabels("6-10_labels.txt")
+                        numClasses = labels.size
+                    }
+                    "20-100" -> {
+                        val modelFile = "20-100_model_fold_2.tflite"
+                        modelInterpreters = listOf(
+                            Interpreter(loadModelFile(modelFile), tfliteOptions).also {
+                                Log.d(TAG, "Loading model file: $modelFile")
+                            }
+                        )
+                        labels = loadLabels("20-100_labels.txt")
+                        numClasses = labels.size
+                    }
+                    "greetings" -> {
+                        val modelFile = "Greetings_model_fold_3.tflite"
+                        modelInterpreters = listOf(
+                            Interpreter(loadModelFile(modelFile), tfliteOptions).also {
+                                Log.d(TAG, "Loading model file: $modelFile")
+                            }
+                        )
+                        labels = loadLabels("greetings_labels.txt")
+                        numClasses = labels.size
+                    }
+                    "responses" -> {
+                        val modelFile = "Responses_model_fold_5.tflite"
+                        modelInterpreters = listOf(
+                            Interpreter(loadModelFile(modelFile), tfliteOptions).also {
+                                Log.d(TAG, "Loading model file: $modelFile")
+                            }
+                        )
+                        labels = loadLabels("responses_labels.txt")
+                        numClasses = labels.size
+                    }
+                    "family" -> {
+                        val modelFile = "Family_model_fold_3.tflite"
+                        modelInterpreters = listOf(
+                            Interpreter(loadModelFile(modelFile), tfliteOptions).also {
+                                Log.d(TAG, "Loading model file: $modelFile")
+                            }
+                        )
+                        labels = loadLabels("family_labels.txt")
+                        numClasses = labels.size
+                    }
+                    "colors" -> {
+                        val modelFile = "Colors_model_fold_3.tflite"
+                        modelInterpreters = listOf(
+                            Interpreter(loadModelFile(modelFile), tfliteOptions).also {
+                                Log.d(TAG, "Loading model file: $modelFile")
+                            }
+                        )
+                        labels = loadLabels("colors_labels.txt")
+                        numClasses = labels.size
+                    }
+                    "pronouns" -> {
+                        val modelFile = "Pronouns_model_fold_1.tflite"
+                        modelInterpreters = listOf(
+                            Interpreter(loadModelFile(modelFile), tfliteOptions).also {
+                                Log.d(TAG, "Loading model file: $modelFile")
+                            }
+                        )
+                        labels = loadLabels("pronouns_labels.txt")
+                        numClasses = labels.size
+                    }
+                    "nouns" -> {
+                        val modelFile = "Nouns_model_fold_4.tflite"
+                        modelInterpreters = listOf(
+                            Interpreter(loadModelFile(modelFile), tfliteOptions).also {
+                                Log.d(TAG, "Loading model file: $modelFile")
+                            }
+                        )
+                        labels = loadLabels("nouns_labels.txt")
+                        numClasses = labels.size
+                    }
+                    "verbs" -> {
+                        val modelFile = "Verbs_model_fold_2.tflite"
+                        modelInterpreters = listOf(
+                            Interpreter(loadModelFile(modelFile), tfliteOptions).also {
+                                Log.d(TAG, "Loading model file: $modelFile")
+                            }
+                        )
+                        labels = loadLabels("verbs_labels.txt")
+                        numClasses = labels.size
+                    }
+                    "school" -> {
+                        val modelFile = "School_model_fold_3.tflite"
+                        modelInterpreters = listOf(
+                            Interpreter(loadModelFile(modelFile), tfliteOptions).also {
+                                Log.d(TAG, "Loading model file: $modelFile")
+                            }
+                        )
+                        labels = loadLabels("school_labels.txt")
+                        numClasses = labels.size
+                    }
+                    "calendar" -> { // Not yet implemented
+                        val modelFile = "Calendar_model_fold_2.tflite"
+                        modelInterpreters = listOf(
+                            Interpreter(loadModelFile(modelFile), tfliteOptions).also {
+                                Log.d(TAG, "Loading model file: $modelFile")
+                            }
+                        )
+                        labels = loadLabels("months_labels.txt")
+                        numClasses = labels.size
+                    }
+                    "weeks" -> {
+                        val modelFile = "Weeks_model_fold_5.tflite"
+                        modelInterpreters = listOf(
+                            Interpreter(loadModelFile(modelFile), tfliteOptions).also {
+                                Log.d(TAG, "Loading model file: $modelFile")
+                            }
+                        )
+                        labels = loadLabels("weeks_labels.txt")
+                        numClasses = labels.size
+                    }
+                    "time" -> {
+                        val modelFile = "Time_model_fold_2.tflite"
+                        modelInterpreters = listOf(
+                            Interpreter(loadModelFile(modelFile), tfliteOptions).also {
+                                Log.d(TAG, "Loading model file: $modelFile")
+                            }
+                        )
+                        labels = loadLabels("time_labels.txt")
+                        numClasses = labels.size
+                    }
+                    "questions" -> {
+                        val modelFile = "Questions_model_fold_5.tflite"
+                        modelInterpreters = listOf(
+                            Interpreter(loadModelFile(modelFile), tfliteOptions).also {
+                                Log.d(TAG, "Loading model file: $modelFile")
+                            }
+                        )
+                        labels = loadLabels("questions_labels.txt")
+                        numClasses = labels.size
+                    }
+                    "phrases" -> {
+                        val modelFile = "Phrases_model_fold_4.tflite"
+                        modelInterpreters = listOf(
+                            Interpreter(loadModelFile(modelFile), tfliteOptions).also {
+                                Log.d(TAG, "Loading model file: $modelFile")
+                            }
+                        )
+                        labels = loadLabels("phrases_labels.txt")
+                        numClasses = labels.size
+                    }
+                    else -> {
+                        Log.e(TAG, "Unknown model category: $category")
+                        return
+                    }
+                }
+
+                Log.d(TAG, "Successfully loaded ${modelInterpreters.size} models for category: $category")
+                Log.d(TAG, "Successfully loaded ${labels.size} labels for category: $category")
+                labels.forEachIndexed { index, label -> Log.d(TAG, "Label $index: $label") }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error while loading models and labels: ${e.message}", e)
+                // Clean up resources in case of failure
+                unloadModels()
+                throw e
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Error while loading models and labels: ${e.message}", e)
+            Log.e(TAG, "Failed to load models for category $category: ${e.message}", e)
+            // Rethrow to notify caller
+            throw e
         }
     }
 
@@ -313,46 +334,65 @@ class HandLandmarkerHelper(
                 "Attempting to call detectLiveStream while not using RunningMode.LIVE_STREAM"
             )
         }
+        
+        // First check if handLandmarker is initialized
+        if (handLandmarker == null) {
+            Log.e(TAG, "HandLandmarker is null in detectLiveStream")
+            imageProxy.close() // Don't forget to close if returning early
+            return
+        }
+        
         val frameTime = SystemClock.uptimeMillis()
 
-        val yBuffer = imageProxy.planes[0].buffer
-        val uBuffer = imageProxy.planes[1].buffer
-        val vBuffer = imageProxy.planes[2].buffer
+        try {
+            val yBuffer = imageProxy.planes[0].buffer
+            val uBuffer = imageProxy.planes[1].buffer
+            val vBuffer = imageProxy.planes[2].buffer
 
-        val ySize = yBuffer.remaining()
-        val uSize = uBuffer.remaining()
-        val vSize = vBuffer.remaining()
+            val ySize = yBuffer.remaining()
+            val uSize = uBuffer.remaining()
+            val vSize = vBuffer.remaining()
 
-        val nv21 = ByteArray(ySize + uSize + vSize)
-        yBuffer.get(nv21, 0, ySize)
-        vBuffer.get(nv21, ySize, vSize)
-        uBuffer.get(nv21, ySize + vSize, uSize)
+            val nv21 = ByteArray(ySize + uSize + vSize)
+            yBuffer.get(nv21, 0, ySize)
+            vBuffer.get(nv21, ySize, vSize)
+            uBuffer.get(nv21, ySize + vSize, uSize)
 
-        val yuvImage = android.graphics.YuvImage(
-            nv21,
-            android.graphics.ImageFormat.NV21,
-            imageProxy.width,
-            imageProxy.height,
-            null
-        )
+            val yuvImage = android.graphics.YuvImage(
+                nv21,
+                android.graphics.ImageFormat.NV21,
+                imageProxy.width,
+                imageProxy.height,
+                null
+            )
 
-        val out = java.io.ByteArrayOutputStream()
-        yuvImage.compressToJpeg(android.graphics.Rect(0, 0, imageProxy.width, imageProxy.height), 100, out)
-        val imageBytes = out.toByteArray()
-        val bitmap = android.graphics.BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+            val out = java.io.ByteArrayOutputStream()
+            yuvImage.compressToJpeg(android.graphics.Rect(0, 0, imageProxy.width, imageProxy.height), 100, out)
+            val imageBytes = out.toByteArray()
+            val bitmap = android.graphics.BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
 
-        imageProxy.close()
+            val matrix = Matrix().apply {
+                postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
+                if (isFrontCamera) {
+                    postScale(-1f, 1f)
+                }
+            }
+            val rotatedBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            val mpImage = BitmapImageBuilder(rotatedBitmap).build()
 
-        val matrix = Matrix().apply {
-            postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
-            if (isFrontCamera) {
-                postScale(-1f, 1f)
+            detectAsync(mpImage, frameTime)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error processing image for detection: ${e.message}", e)
+            // If there's an exception during image processing, notify the listener
+            handLandmarkerHelperListener?.onError("Error processing image: ${e.message}", ERROR_CODE)
+        } finally {
+            // Always close the imageProxy
+            try {
+                imageProxy.close()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error closing imageProxy: ${e.message}", e)
             }
         }
-        val rotatedBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-        val mpImage = BitmapImageBuilder(rotatedBitmap).build()
-
-        detectAsync(mpImage, frameTime)
     }
 
     @VisibleForTesting

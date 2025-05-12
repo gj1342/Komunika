@@ -4,35 +4,50 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FFFDD6"
+    android:background="#F1F1F1"
     tools:context=".SignersToNonSignersActivity">
 
-    <!-- Back Icon -->
-    <ImageView
-        android:id="@+id/back_icon"
-        android:layout_width="32dp"
-        android:layout_height="32dp"
-        android:layout_marginStart="16dp"
-        android:layout_marginTop="16dp"
-        android:contentDescription="Back Icon"
-        android:src="@drawable/back"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
-
-    <!-- Title Section -->
-    <TextView
-        android:id="@+id/titleTextView"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:padding="8dp"
-        android:text="MULTIPLE PHONE"
-        android:textColor="#000000"
-        android:textSize="16sp"
-        android:textStyle="bold"
+    <!-- Header/App Bar -->
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="#4B1F4E"
+        android:elevation="4dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toTopOf="parent">
+
+        <!-- Back Icon -->
+        <ImageView
+            android:id="@+id/back_icon"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:contentDescription="Back Icon"
+            android:src="@drawable/back" />
+
+        <!-- Title Section -->
+        <TextView
+            android:id="@+id/titleTextView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:padding="8dp"
+            android:text="KOMUNIKA"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <!-- User Spinner (moved to toolbar) -->
+        <Spinner
+            android:id="@+id/userSpinner"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:layout_marginEnd="16dp"
+            android:background="@android:drawable/btn_dropdown"
+            android:elevation="8dp" />
+    </androidx.appcompat.widget.Toolbar>
 
     <!-- Subtitle -->
     <TextView
@@ -42,126 +57,203 @@
         android:layout_marginTop="8dp"
         android:text="Sign Language Detection"
         android:textColor="#4B1F4E"
-        android:textSize="20sp"
+        android:textSize="16sp"
         android:textStyle="bold"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/titleTextView" />
+        app:layout_constraintTop_toBottomOf="@id/toolbar" />
 
-    <!-- Scrollable Sentence TextView -->
-    <ScrollView
-        android:id="@+id/sentenceScrollView"
-        android:layout_width="0dp"
-        android:layout_height="50dp"
-        android:layout_marginTop="8dp"
-        android:padding="8dp"
-        android:background="@drawable/rounded_border"
+    <!-- Participant Count TextView -->
+    <TextView
+        android:id="@+id/participantCountTextView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="4dp"
+        android:padding="4dp"
+        android:background="#88DDDDDD"
+        android:text="Signer/s Participants: 0"
+        android:textColor="#333333"
+        android:textSize="12sp"
+        android:gravity="center"
         app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/subtitleTextView" />
+        
+    <!-- Text-to-Speech Switch -->
+    <androidx.appcompat.widget.SwitchCompat
+        android:id="@+id/ttsSwitch"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="16dp"
+        android:text="Speech"
+        android:textSize="12sp"
+        android:checked="true"
+        android:textColor="#333333"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/subtitleTextView">
+        app:layout_constraintTop_toTopOf="@id/participantCountTextView"
+        app:layout_constraintBottom_toBottomOf="@id/participantCountTextView" />
+        
+    <!-- Prediction Display -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/sentenceCardView"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_margin="8dp"
+        app:cardCornerRadius="8dp"
+        app:cardElevation="2dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/participantCountTextView">
 
-        <TextView
-            android:id="@+id/sentenceTextView"
+        <ScrollView
+            android:id="@+id/sentenceScrollView"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Prediction: "
-            android:textColor="#333333"
-            android:textSize="16sp"
-            android:lineSpacingExtra="4dp"
-            android:padding="4dp" />
-    </ScrollView>
+            android:layout_height="50dp"
+            android:padding="8dp"
+            android:background="#FFFFFF">
 
-    <!-- Camera Preview with Spinner Overlay -->
-    <FrameLayout
+            <TextView
+                android:id="@+id/sentenceTextView"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Prediction: "
+                android:textColor="#333333"
+                android:textSize="16sp"
+                android:lineSpacingExtra="4dp"
+                android:padding="4dp" />
+        </ScrollView>
+    </androidx.cardview.widget.CardView>
+
+    <!-- Messages from Deaf Users Display Area -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/messagesCardView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_margin="8dp"
+        app:cardCornerRadius="8dp"
+        app:cardElevation="2dp"
+        app:layout_constraintBottom_toTopOf="@id/camera_container"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/sentenceCardView"
+        app:layout_constraintHeight_percent="0.25">
+
+        <!-- ScrollView to make the TextView scrollable -->
+        <ScrollView
+            android:id="@+id/messagesScrollView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#FFFFFF"
+            android:padding="8dp"
+            android:scrollbars="vertical"
+            android:fadeScrollbars="false"
+            android:fillViewport="true">
+
+            <!-- TextView for displaying messages -->
+            <TextView
+                android:id="@+id/messagesTextView"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif"
+                android:padding="8dp"
+                android:text="Waiting for messages from deaf users..."
+                android:textAlignment="viewStart"
+                android:textColor="#333333"
+                android:textSize="16sp"
+                android:scrollbars="none"
+                android:fadingEdge="vertical"
+                android:fadingEdgeLength="16dp"
+                android:autoLink="web|email|phone"
+                android:textIsSelectable="true"
+                android:lineSpacingExtra="4dp" />
+        </ScrollView>
+    </androidx.cardview.widget.CardView>
+
+    <!-- Camera Preview with Hand Tracking -->
+    <androidx.cardview.widget.CardView
         android:id="@+id/camera_container"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        android:layout_margin="8dp"
+        app:cardCornerRadius="8dp"
+        app:cardElevation="2dp"
         app:layout_constraintBottom_toTopOf="@id/message_input_container"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/sentenceScrollView">
+        app:layout_constraintTop_toBottomOf="@id/messagesCardView"
+        app:layout_constraintHeight_percent="0.4">
 
-        <!-- Camera Preview -->
-        <androidx.camera.view.PreviewView
-            android:id="@+id/previewView"
+        <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="#000000" />
+            android:layout_height="match_parent">
 
-        <!-- Hand Landmarks Overlay -->
-        <com.example.komunikaprototype.OverlayView
-            android:id="@+id/overlayView"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="@android:color/transparent" />
+            <!-- Camera Preview -->
+            <androidx.camera.view.PreviewView
+                android:id="@+id/previewView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#000000" />
 
-        <!-- Participants Count TextView -->
-        <TextView
-            android:id="@+id/participantCountTextView"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="16dp"
-            android:layout_marginTop="16dp"
-            android:layout_gravity="top|start"
-            android:text="Signers Participants: 0"
-            android:textColor="#FFFFFF"
-            android:textSize="12sp"
-            android:textStyle="bold" />
+            <!-- Hand Landmarks Overlay -->
+            <com.example.komunikaprototype.OverlayView
+                android:id="@+id/overlayView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@android:color/transparent" />
+        </FrameLayout>
+    </androidx.cardview.widget.CardView>
 
-        <!-- Enhanced Spinner -->
-        <Spinner
-            android:id="@+id/userSpinner"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_margin="16dp"
-            android:layout_gravity="end|top"
-            android:background="@android:drawable/btn_dropdown"
-            android:elevation="8dp" />
-
-        <!-- Current Model TextView -->
-    </FrameLayout>
-
-    <LinearLayout
+    <!-- Message Input Container -->
+    <androidx.cardview.widget.CardView
         android:id="@+id/message_input_container"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:padding="8dp"
+        android:layout_margin="8dp"
+        app:cardCornerRadius="8dp"
+        app:cardElevation="4dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
-        <!-- Message Input -->
-        <EditText
-            android:id="@+id/message_input"
-            android:layout_width="0dp"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:hint="Type here..."
-            android:background="@drawable/input_text_bg"
-            android:padding="8dp"
-            android:inputType="text" />
+            android:orientation="horizontal"
+            android:padding="8dp">
 
-        <!-- Microphone Button -->
-        <ImageButton
-            android:id="@+id/microphone_button"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:layout_marginStart="8dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Microphone"
-            android:src="@drawable/microphone"
-            android:scaleType="fitCenter" />
+            <!-- Message Input -->
+            <EditText
+                android:id="@+id/message_input"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Type message here..."
+                android:background="@android:drawable/editbox_background"
+                android:padding="12dp"
+                android:minHeight="48dp"
+                android:inputType="textMultiLine" />
 
-        <!-- Send Button -->
-        <ImageButton
-            android:id="@+id/send_button"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:layout_marginStart="8dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Send"
-            android:src="@drawable/send"
-            android:scaleType="fitCenter" />
-    </LinearLayout>
+            <!-- Microphone Button -->
+            <ImageButton
+                android:id="@+id/microphone_button"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Microphone"
+                android:src="@drawable/microphone"
+                android:scaleType="fitCenter" />
+
+            <!-- Send Button -->
+            <ImageButton
+                android:id="@+id/send_button"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Send"
+                android:src="@drawable/send"
+                android:scaleType="fitCenter" />
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
 </androidx.constraintlayout.widget.ConstraintLayout>

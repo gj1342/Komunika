@@ -1,30 +1,30 @@
 package com.example.komunikaprototype
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.provider.MediaStore
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.core.AspectRatio
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import com.example.komunikaprototype.databinding.NonsignersToSignersBinding
 import com.google.android.gms.nearby.Nearby
@@ -32,10 +32,9 @@ import com.google.android.gms.nearby.connection.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
-class NonSignersToSignersActivity : AppCompatActivity(), PoseLandmarkerHelper.LandmarkerListener {
+class NonSignersToSignersActivity : AppCompatActivity() {
 
     private lateinit var viewBinding: NonsignersToSignersBinding
-    private lateinit var cameraExecutor: ExecutorService
     private lateinit var connectionsClient: ConnectionsClient
     private val connectedEndpoints = mutableMapOf<String, String>() // Map of endpointId -> username
     private var isConnected = false
@@ -45,23 +44,24 @@ class NonSignersToSignersActivity : AppCompatActivity(), PoseLandmarkerHelper.La
     private lateinit var serviceId: String // Service ID received from StartingLobbyActivity
     private var hasControl = false // Flag to indicate if the device has control
 
-    private lateinit var connectedUsernames: MutableList<String>
-    private lateinit var adapter: ArrayAdapter<String>
+    private lateinit var connectedUsers: MutableList<UserWithImage>
+    private lateinit var userSpinnerAdapter: UserSpinnerAdapter
 
     private val role = "Signers" // Role designation
 
-    private var poseLandmarkerHelper: PoseLandmarkerHelper? = null
-
     private var controlSenderUsername: String? = null // Store the control sender's username
+    private var myProfileImageBase64: String? = null // Store current user's profile image
 
     private val activityResultLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
         if (permissions.values.all { it }) {
-            startCamera()
             startAdvertising()
         } else {
             Toast.makeText(this, "Permission request denied", Toast.LENGTH_SHORT).show()
         }
     }
+
+    // Add a new instance variable to keep track of messages
+    private val messageHistory = StringBuilder()
 
     companion object {
         private const val TAG = "NonSignersToSignersActivity"
@@ -74,8 +74,6 @@ class NonSignersToSignersActivity : AppCompatActivity(), PoseLandmarkerHelper.La
                 Manifest.permission.ACCESS_WIFI_STATE,
                 Manifest.permission.CHANGE_WIFI_STATE,
                 Manifest.permission.NEARBY_WIFI_DEVICES,
-                Manifest.permission.CAMERA,
-                Manifest.permission.RECORD_AUDIO,
                 Manifest.permission.ACCESS_FINE_LOCATION
             )
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> arrayOf(
@@ -84,9 +82,7 @@ class NonSignersToSignersActivity : AppCompatActivity(), PoseLandmarkerHelper.La
                 Manifest.permission.BLUETOOTH_CONNECT,
                 Manifest.permission.ACCESS_WIFI_STATE,
                 Manifest.permission.CHANGE_WIFI_STATE,
-                Manifest.permission.ACCESS_FINE_LOCATION,
-                Manifest.permission.CAMERA,
-                Manifest.permission.RECORD_AUDIO
+                Manifest.permission.ACCESS_FINE_LOCATION
             )
             else -> arrayOf(
                 Manifest.permission.BLUETOOTH,
@@ -94,9 +90,7 @@ class NonSignersToSignersActivity : AppCompatActivity(), PoseLandmarkerHelper.La
                 Manifest.permission.ACCESS_WIFI_STATE,
                 Manifest.permission.CHANGE_WIFI_STATE,
                 Manifest.permission.ACCESS_FINE_LOCATION, // Ensure this is present
-                Manifest.permission.ACCESS_COARSE_LOCATION,
-                Manifest.permission.CAMERA,
-                Manifest.permission.RECORD_AUDIO
+                Manifest.permission.ACCESS_COARSE_LOCATION
             )
         }
 
@@ -404,18 +398,17 @@ class NonSignersToSignersActivity : AppCompatActivity(), PoseLandmarkerHelper.La
         viewBinding = NonsignersToSignersBinding.inflate(layoutInflater)
         setContentView(viewBinding.root)
 
-        // Initialize PoseLandmarkerHelper
-        poseLandmarkerHelper = PoseLandmarkerHelper(
-            context = this,
-            poseLandmarkerHelperListener = this // Pass the listener for results
-        )
-
         // Retrieve Service ID from intent
         serviceId = intent.getStringExtra("SERVICE_ID") ?: SERVICE_ID
 
+        // Load profile image from SharedPreferences
+        loadProfileImage()
+
         // Initialize components
         connectionsClient = Nearby.getConnectionsClient(this)
-        cameraExecutor = Executors.newSingleThreadExecutor()
+
+        // Hide the camera preview view since we're not using the camera
+        viewBinding.previewView.visibility = View.GONE
 
         // Initialize components
         viewBinding.videoView.visibility = View.GONE // Hide VideoView by default
@@ -425,11 +418,52 @@ class NonSignersToSignersActivity : AppCompatActivity(), PoseLandmarkerHelper.La
 
         val participantCountTextView = findViewById<TextView>(R.id.participantCountTextView)
         participantCountTextView.text = "Nonsigner/s Participants: 0"
+        participantCountTextView.visibility = View.VISIBLE
+        
+        // Make sure the participant count is always accessible/visible
+        val spacer = findViewById<View>(R.id.spacer)
+        spacer.visibility = View.VISIBLE
 
-        // Request camera permissions
+        // Initialize prediction text view
+        val predictedSignTextView = findViewById<TextView>(R.id.predictedSignTextView)
+        predictedSignTextView.text = "Waiting for sign detection..."
+
+        // Set up message sending functionality
+        val messageEditText = findViewById<EditText>(R.id.messageEditText)
+        val sendButton = findViewById<Button>(R.id.sendButton)
+        
+        sendButton.setOnClickListener {
+            val message = messageEditText.text.toString().trim()
+            if (message.isNotEmpty()) {
+                val selectedPosition = findViewById<Spinner>(R.id.userSpinner).selectedItemPosition
+                if (selectedPosition >= 0 && selectedPosition < connectedUsers.size) {
+                    val selectedUser = connectedUsers[selectedPosition]
+                    // Check if it's a valid selection (not the current user)
+                    if (selectedUser.username == "None") {
+                        Toast.makeText(this, "Please select a user to send the message to", Toast.LENGTH_SHORT).show()
+                    } else {
+                        sendMessageToNonDeafUser(message, selectedUser.username)
+                        messageEditText.text.clear()
+                    }
+                } else {
+                    Toast.makeText(this, "Invalid user selection", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Toast.makeText(this, "Please enter a message", Toast.LENGTH_SHORT).show()
+            }
+        }
+        
+        // Handle Enter key press in EditText
+        messageEditText.setOnKeyListener { _, keyCode, event ->
+            if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_ENTER) {
+                sendButton.performClick()
+                return@setOnKeyListener true
+            }
+            false
+        }
+
+        // Request permissions and start advertising
         if (allPermissionsGranted()) {
-            startCamera()
-            // Start advertising and discovery to establish a connection
             startAdvertising()
         } else {
             requestPermissions()
@@ -445,34 +479,42 @@ class NonSignersToSignersActivity : AppCompatActivity(), PoseLandmarkerHelper.La
             }
         }
 
-        // Set VideoView completion listener to play the next video in sequence
+        // Set VideoView properties for playback with automatic chaining of videos
         viewBinding.videoView.setOnCompletionListener {
-            if (currentIndex < wordList.size) {
-                playNextVideo()
-            } else {
-                // When all videos are finished, hide the VideoView
-                viewBinding.videoView.visibility = View.GONE
-                Log.d(TAG, "All videos finished. VideoView is now hidden.")
-
-                // Ensure Wrong Sign Button remains visible and on top
-                viewBinding.wrongSignButton.visibility = View.VISIBLE
-                viewBinding.wrongSignButton.bringToFront()
-            }
+            // When a video completes, play the next one in the sequence
+            Log.d(TAG, "Video playback completed")
+            
+            // Play the next video in the sequence if available
+            playNextVideo()
+            
+            // Make sure the Wrong Sign Button remains visible
+            viewBinding.wrongSignButton.visibility = View.VISIBLE
+            viewBinding.wrongSignButton.bringToFront()
         }
 
-        // Initialize Spinner and Adapter
-        connectedUsernames = mutableListOf("None", "All")
-        adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, connectedUsernames)
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        // Initialize user list with "None" and "All" options
+        connectedUsers = mutableListOf(
+            UserWithImage("None"), 
+            UserWithImage("All")
+        )
+        
+        // Initialize the custom spinner adapter
+        userSpinnerAdapter = UserSpinnerAdapter(
+            this,
+            R.layout.spinner_item_user,
+            connectedUsers
+        )
 
         val userSpinner = findViewById<Spinner>(R.id.userSpinner)
-        userSpinner.adapter = adapter
+        userSpinner.adapter = userSpinnerAdapter
 
         // Listener for Spinner item selection
         userSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>, view: View?, position: Int, id: Long) {
-                val selectedUser = connectedUsernames[position]
-                handleUserSelection(selectedUser)
+                if (position < connectedUsers.size) {
+                    val selectedUser = connectedUsers[position]
+                    handleUserSelection(selectedUser.username)
+                }
             }
 
             override fun onNothingSelected(parent: AdapterView<*>) {
@@ -539,10 +581,104 @@ class NonSignersToSignersActivity : AppCompatActivity(), PoseLandmarkerHelper.La
                 // Do nothing
             }
         }
-
+        
+        // Set up the Stop Prediction button
+        val stopPredictionButton = findViewById<Button>(R.id.stopPredictionButton)
+        stopPredictionButton.setOnClickListener {
+            if (!hasControl) {
+                Toast.makeText(
+                    this@NonSignersToSignersActivity,
+                    "You do not have control to stop predictions.",
+                    Toast.LENGTH_SHORT
+                ).show()
+                return@setOnClickListener
+            }
+            
+            // Get the current prediction text
+            val predictedSignTextView = findViewById<TextView>(R.id.predictedSignTextView)
+            val currentPrediction = predictedSignTextView.text.toString()
+            
+            // Set spinner selection to "None" (which is at position 0)
+            upwardSpinner.setSelection(0)
+            
+            // Send STOP_HAND_DETECTION message directly
+            sendMessageToSender("STOP_HAND_DETECTION")
+            
+            Toast.makeText(
+                this@NonSignersToSignersActivity,
+                "AI prediction stopped",
+                Toast.LENGTH_SHORT
+            ).show()
+            
+            Log.d(TAG, "Stop Prediction button clicked. Sent STOP_HAND_DETECTION to control sender.")
+        }
     }
 
-    // Add this helper method to send the reset message:
+    // Load profile image from SharedPreferences
+    private fun loadProfileImage() {
+        val sharedPreferences = getSharedPreferences("UserProfile", Context.MODE_PRIVATE)
+        val profileImageUri = sharedPreferences.getString("profileImage", null)
+        
+        if (profileImageUri != null) {
+            try {
+                // Convert URI to Bitmap
+                val imageUri = Uri.parse(profileImageUri)
+                val inputStream = contentResolver.openInputStream(imageUri)
+                val bitmap = BitmapFactory.decodeStream(inputStream)
+                inputStream?.close()
+                
+                // Convert bitmap to base64 for transmission
+                myProfileImageBase64 = UserWithImage.bitmapToBase64(bitmap)
+                Log.d(TAG, "Profile image loaded and converted to base64")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading profile image: ${e.message}")
+                myProfileImageBase64 = null
+            }
+        }
+    }
+
+    private fun addUserToSpinner(username: String, endpointId: String, profileImageBase64: String? = null) {
+        runOnUiThread {
+            val currentDeviceUsername = intent.getStringExtra("USERNAME") ?: "Unknown" // Retrieve current device username
+
+            // Filter out system-specific prefixes and the current device's username
+            if (username.startsWith("ALERT:") || username.startsWith("CONTROL:") || username.startsWith("USERNAME:") || username == currentDeviceUsername) {
+                Log.d(TAG, "Filtered out username: $username")
+                return@runOnUiThread
+            }
+
+            // Check if user already exists in the list
+            val existingUserIndex = connectedUsers.indexOfFirst { it.username == username && it.username != "None" && it.username != "All" }
+            
+            if (existingUserIndex != -1) {
+                // Update existing user's profile image if needed
+                if (profileImageBase64 != null) {
+                    connectedUsers[existingUserIndex] = connectedUsers[existingUserIndex].copy(
+                        profileImageBase64 = profileImageBase64
+                    )
+                }
+            } else {
+                // Add new user to the list
+                connectedUsers.add(UserWithImage(
+                    username = username,
+                    profileImageBase64 = profileImageBase64,
+                    endpointId = endpointId,
+                    role = "Non Signers"
+                ))
+            }
+            
+            // Notify adapter of changes
+            userSpinnerAdapter.notifyDataSetChanged()
+        }
+    }
+
+    private fun removeUserFromSpinner(username: String) {
+        runOnUiThread {
+            connectedUsers.removeIf { it.username == username && it.username != "None" && it.username != "All" }
+            userSpinnerAdapter.notifyDataSetChanged()
+        }
+    }
+
     private fun sendResetMessageToSender(endpointId: String) {
         val resetMessage = "RESET"
         connectionsClient.sendPayload(endpointId, Payload.fromBytes(resetMessage.toByteArray()))
@@ -567,31 +703,6 @@ class NonSignersToSignersActivity : AppCompatActivity(), PoseLandmarkerHelper.La
         } else {
             Log.e(TAG, "No endpoint found for control sender. Message not sent.")
             Toast.makeText(this, "Control sender is not connected. Message not sent.", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun addUserToSpinner(username: String) {
-        runOnUiThread {
-            val currentDeviceUsername = intent.getStringExtra("USERNAME") ?: "Unknown" // Retrieve current device username
-
-            // Filter out system-specific prefixes and the current device's username
-            if (username.startsWith("ALERT:") || username.startsWith("CONTROL:") || username.startsWith("USERNAME:") || username == currentDeviceUsername) {
-                Log.d(TAG, "Filtered out username: $username")
-                return@runOnUiThread
-            }
-
-            // Add only valid usernames to the spinner
-            if (!connectedUsernames.contains(username)) {
-                connectedUsernames.add(username)
-                adapter.notifyDataSetChanged()
-            }
-        }
-    }
-
-    private fun removeUserFromSpinner(username: String) {
-        runOnUiThread {
-            connectedUsernames.remove(username)
-            adapter.notifyDataSetChanged()
         }
     }
 
@@ -649,364 +760,63 @@ class NonSignersToSignersActivity : AppCompatActivity(), PoseLandmarkerHelper.La
         }
     }
 
-    // Restrict model category change functionality
-    private fun sendMessage(message: String) {
-        Log.d(TAG, "Checking control status for message sending.")
-        Log.d(TAG, "Connected Endpoints: $connectedEndpoints")
-
-        // Allow only if this device has control
-        if (!hasControl) {
-            Toast.makeText(this, "You do not have control to modify the model categories.", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        // Ensure there are connected devices
-        if (connectedEndpoints.isEmpty()) {
-            Toast.makeText(this, "No connected devices to send the message.", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val payloadMessage = "MESSAGE:$message"
-
-        // Send message to all connected endpoints
-        connectedEndpoints.keys.forEach { endpointId ->
-            connectionsClient.sendPayload(endpointId, Payload.fromBytes(payloadMessage.toByteArray()))
-                .addOnSuccessListener {
-                    Log.d(TAG, "Message sent successfully to $endpointId: $payloadMessage")
-                }
-                .addOnFailureListener { e ->
-                    Log.e(TAG, "Failed to send message to $endpointId: $payloadMessage", e)
-                    Toast.makeText(this, "Message delivery failed to some devices.", Toast.LENGTH_SHORT).show()
-                }
-        }
-    }
-
-    private fun startAdvertising() {
-        val advertisingOptions = AdvertisingOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
-        connectionsClient.startAdvertising(
-            "User",
-            serviceId,
-            connectionLifecycleCallback,
-            advertisingOptions
-        ).addOnSuccessListener {
-            Log.d(TAG, "Advertising started successfully.")
-        }.addOnFailureListener { e ->
-            Log.e(TAG, "Advertising failed: ${e.message}")
-        }
-    }
-
-    private val endpointDiscoveryCallback = object : EndpointDiscoveryCallback() {
-        override fun onEndpointFound(endpointId: String, info: DiscoveredEndpointInfo) {
-            Log.d(TAG, "Endpoint found: ${info.endpointName}")
-            connectionsClient.requestConnection("User", endpointId, connectionLifecycleCallback)
-        }
-
-        override fun onEndpointLost(endpointId: String) {
-            Log.d(TAG, "Endpoint lost: $endpointId")
-        }
-    }
-
-    private val connectionLifecycleCallback = object : ConnectionLifecycleCallback() {
-        override fun onConnectionInitiated(endpointId: String, connectionInfo: ConnectionInfo) {
-            Log.d(TAG, "Connection initiated with ${connectionInfo.endpointName}")
-            connectionsClient.acceptConnection(endpointId, payloadCallback)
-        }
-
-        override fun onConnectionResult(endpointId: String, result: ConnectionResolution) {
-            if (result.status.isSuccess) {
-                isConnected = true
-                val username = intent.getStringExtra("USERNAME") ?: "Unknown"
-
-                // Add endpoint and username to the map
-                connectedEndpoints[endpointId] = username
-                addUserToSpinner(username)
-                updateParticipantCount()
-
-                // Send the username of this device to the connected endpoint
-                val payload = Payload.fromBytes("ROLE:$role,USERNAME:$username".toByteArray())
-                connectionsClient.sendPayload(endpointId, payload)
-
-                Log.d(TAG, "Connected to $endpointId. Sent username: $username")
-            } else {
-                Log.e(TAG, "Connection failed to $endpointId")
-            }
-        }
-
-        override fun onDisconnected(endpointId: String) {
-            val username = connectedEndpoints.remove(endpointId)
-            if (!username.isNullOrEmpty()) {
-                removeUserFromSpinner(username)
-            }
-            updateParticipantCount()
-            Log.d(TAG, "Disconnected from $endpointId. Username removed: $username")
-        }
-    }
-
-    private val payloadCallback = object : PayloadCallback() {
-        override fun onPayloadReceived(endpointId: String, payload: Payload) {
-            if (isActivityDestroyed) {
-                Log.w(TAG, "Payload received but activity is destroyed. Ignoring payload.")
-                return
-            }
-
-            Log.d(TAG, "Payload received from endpointId: $endpointId")
-
-            if (payload.type == Payload.Type.BYTES) {
-                val message = payload.asBytes()?.let { String(it) }
-                if (message != null) {
-                    val username = intent.getStringExtra("USERNAME") ?: "Unknown"
-
-                    // Handle other cases for non-AR mode
-                    when {
-                        message.startsWith("BROADCAST_PREDICTION:") -> {
-                            val parts = message.split(":", limit = 3)
-                            if (parts.size == 3) {
-                                val sender = parts[1] // Extract sender username
-                                val prediction = parts[2] // Extract the predicted sign
-                                displayPrediction(sender, prediction) // Use the same display logic
-                            } else {
-                                Log.e(TAG, "Invalid BROADCAST_PREDICTION message format: $message")
-                            }
-                        }
-                        message.startsWith("PREDICTION:") -> {
-                            val parts = message.split(":", limit = 3)
-                            if (parts.size == 3) {
-                                val sender = parts[1] // Correctly parses the sender username
-                                val prediction = parts[2] // Correctly parses the predicted sign
-                                displayPrediction(sender, prediction)
-                            } else {
-                                Log.e(TAG, "Invalid PREDICTION message format: $message")
-                            }
-                        }
-                        message.startsWith("ROLE:") -> {
-                            // Parse "ROLE:Non Signers,USERNAME: <username>"
-                            val parts = message.split(",")
-                            val role = parts.find { it.startsWith("ROLE:") }?.removePrefix("ROLE:")
-                            val username = parts.find { it.startsWith("USERNAME:") }?.removePrefix("USERNAME:")
-
-                            if (role == "Non Signers" && username != null) {
-                                Log.d(TAG, "Parsed username: $username with role: $role from endpoint: $endpointId")
-                                connectedEndpoints[endpointId] = username
-                                addUserToSpinner(username)
-                            } else {
-                                Log.e(TAG, "Invalid payload format: $message")
-                            }
-                        }
-                        message.startsWith("ALERT:") -> {
-                            // Parse alert format: ALERT:<target>:<content>
-                            val parts = message.split(":", limit = 3)
-                            if (parts.size == 3) {
-                                val targetUser = parts[1]
-                                val alertContent = parts[2]
-
-                                if (targetUser == username || targetUser == "All") {
-                                    Log.d(TAG, "Received alert for this user: $alertContent")
-                                    showAlertNotification(alertContent)
-                                } else {
-                                    Log.d(TAG, "Received alert not intended for this user: $message")
-                                }
-                            }
-                        }
-                        message.startsWith("BROADCAST:") -> {
-                            // Broadcast message to all users
-                            val broadcastMessage = message.removePrefix("BROADCAST:")
-                            Log.d(TAG, "Received broadcast message: $broadcastMessage")
-                            updateTextViewAndPlayVideo(broadcastMessage)
-                        }
-                        message.startsWith("TARGET:") -> {
-                            // Targeted message for a specific user
-                            val parts = message.split(":", limit = 3)
-                            if (parts.size == 3) {
-                                val targetUser = parts[1]
-                                val targetMessage = parts[2]
-                                val username = intent.getStringExtra("USERNAME") ?: "Unknown"
-
-                                if (targetUser == username) {
-                                    Log.d(TAG, "Received targeted message: $targetMessage")
-                                    updateTextViewAndPlayVideo(targetMessage)
-                                } else {
-                                    Log.d(TAG, "Targeted message not for this user: $message")
-                                }
-                            }
-                        }
-                        message.startsWith("CONTROL:") -> {
-                            val parts = message.split(",")
-                            val controllingUser = parts[0].removePrefix("CONTROL:")
-                            controlSenderUsername = parts.find { it.startsWith("USERNAME:") }?.removePrefix("USERNAME:")
-
-                            val currentUsername = intent.getStringExtra("USERNAME") ?: "Unknown"
-                            hasControl = (controllingUser == "All" || controllingUser == currentUsername)
-
-                            runOnUiThread {
-                                val statusMessage = if (hasControl) {
-                                    "You now have control of model prediction, granted by $controlSenderUsername."
-                                } else {
-                                    "You do not have control of model prediction."
-                                }
-                                Toast.makeText(this@NonSignersToSignersActivity, statusMessage, Toast.LENGTH_SHORT).show()
-                                Log.d(TAG, "Control status updated. Granted by: $controlSenderUsername. Current control: $hasControl")
-                            }
-                        }
-                        else -> {
-                            // Handle other messages
-                            updateTextViewAndPlayVideo(message)
-                        }
-                    }
-                }
-            } else {
-                Log.e(TAG, "Received payload of unexpected type from endpoint: $endpointId")
-            }
-        }
-
-        override fun onPayloadTransferUpdate(endpointId: String, update: PayloadTransferUpdate) {
-            if (isActivityDestroyed) {
-                Log.w(TAG, "Payload transfer update received but activity is destroyed. Ignoring update.")
-                return
-            }
-
-            Log.d(TAG, "Payload transfer update from endpointId: $endpointId, status: ${update.status}")
-
-            if (update.status == PayloadTransferUpdate.Status.SUCCESS) {
-                Log.d(TAG, "Payload transfer successfully completed for endpoint: $endpointId")
-            } else if (update.status == PayloadTransferUpdate.Status.FAILURE) {
-                Log.e(TAG, "Payload transfer failed for endpoint: $endpointId")
-            }
-        }
-    }
-
-    private fun displayPrediction(sender: String, prediction: String) {
-        runOnUiThread {
-            val predictedSignTextView = findViewById<TextView>(R.id.predictedSignTextView)
-            predictedSignTextView.text = "$prediction"
-            Log.d(TAG, "Displayed prediction: $prediction")
-        }
-    }
-
-    private fun showAlertNotification(alertContent: String) {
-        runOnUiThread {
-            Toast.makeText(this, alertContent, Toast.LENGTH_LONG).show()
-
-            // Optional: Vibrate or play sound for alerts
-            val vibrator = getSystemService(VIBRATOR_SERVICE) as Vibrator
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
-            } else {
-                vibrator.vibrate(500)
-            }
-        }
-    }
-
-    // Update control logic
-    private fun updateControl(controllingUser: String) {
-        val deviceUsername = intent.getStringExtra("USERNAME") ?: "Unknown"
-        hasControl = (controllingUser == "All" || controllingUser == deviceUsername)
-
-        runOnUiThread {
-            val statusMessage = if (hasControl) {
-                "You now have control of model prediction."
-            } else {
-                "You do not have control of model prediction."
-            }
-            Toast.makeText(this, statusMessage, Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun updateTextViewAndPlayVideo(message: String) {
-        Log.d(TAG, "Received message: $message")
-        runOnUiThread {
-            if (message.isBlank()) {
-                viewBinding.videoView.visibility = View.GONE
-                viewBinding.textView.visibility = View.GONE
-                Log.d(TAG, "No message received. VideoView and TextView are now hidden.")
-                return@runOnUiThread
-            }
-
-            try {
-                val parts = message.split(":", limit = 3)
-                when (parts.size) {
-                    3 -> {
-                        val senderUsername = parts[1]
-                        val actualMessage = parts[2]
-
-                        // Display the message with the sender's username
-                        viewBinding.textView.visibility = View.VISIBLE
-                        viewBinding.textView.text = "$senderUsername : $actualMessage"
-                        Log.d(TAG, "Message from $senderUsername displayed: $actualMessage")
-
-                        // Process the message to play corresponding videos
-                        processMessageForVideo(actualMessage)
-                    }
-                    2 -> {
-                        val senderUsername = parts[0]
-                        val actualMessage = parts[1]
-
-                        // Handle messages without the full structure
-                        viewBinding.textView.visibility = View.VISIBLE
-                        viewBinding.textView.text = "$senderUsername : $actualMessage"
-                        Log.d(TAG, "Message from $senderUsername displayed: $actualMessage")
-
-                        // Process the message to play corresponding videos
-                        processMessageForVideo(actualMessage)
-                    }
-                    else -> throw IllegalArgumentException("Invalid message format: $message")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error processing message: $message", e)
-                viewBinding.textView.text = "Error: Unable to display message."
-                viewBinding.textView.visibility = View.VISIBLE
-            }
-        }
-    }
-
-    private fun processMessageForVideo(message: String) {
-        val formattedInput = message.lowercase().replace(" ", "_")
-        wordList = splitIntoKnownPhrases(formattedInput)
-        currentIndex = 0
-
-        if (wordList.isNotEmpty()) {
-            playNextVideo()
-        } else {
-            viewBinding.videoView.visibility = View.GONE
-        }
-    }
-
     private fun playNextVideo() {
+        // Check if there's nothing to play
+        if (wordList.isEmpty() || currentIndex >= wordList.size) {
+            Log.d(TAG, "No videos to play or reached the end of the list")
+            viewBinding.videoView.visibility = View.GONE
+            
+            // Reset prediction text
+            val predictedSignTextView = findViewById<TextView>(R.id.predictedSignTextView)
+            predictedSignTextView.text = "Waiting for sign detection..."
+            return
+        }
+        
         while (currentIndex < wordList.size) {
             val phrase = wordList[currentIndex]
             val videoResId = videoMap[phrase] ?: getAlphabetVideos(phrase)
 
             if (videoResId != null) {
                 try {
+                    // Stop any currently playing video
+                    if (viewBinding.videoView.isPlaying) {
+                        viewBinding.videoView.stopPlayback()
+                    }
+                    
                     val videoUri = Uri.parse("android.resource://$packageName/$videoResId")
                     Log.d(TAG, "Playing video for phrase: $phrase, URI: $videoUri")
                     viewBinding.videoView.setVideoURI(videoUri)
                     viewBinding.videoView.visibility = View.VISIBLE
                     viewBinding.videoView.start()
 
-                    // Ensure Wrong Sign Button remains visible and in front
-                    viewBinding.wrongSignButton.visibility = View.VISIBLE
-                    viewBinding.wrongSignButton.bringToFront()
-
-                    // Ensure the VideoView is on top of PreviewView
-                    viewBinding.videoView.bringToFront()
+                    // Update prediction text
+                    val predictedSignTextView = findViewById<TextView>(R.id.predictedSignTextView)
+                    predictedSignTextView.text = "Current sign: $phrase"
+                    
                     currentIndex++ // Move to the next item in the list
-                    // Ensure Wrong Sign Button remains visible and in front
-                    viewBinding.wrongSignButton.visibility = View.VISIBLE
-                    viewBinding.wrongSignButton.bringToFront()
                     return // Exit the method to wait for video completion
                 } catch (e: Exception) {
                     Log.e(TAG, "Error playing video: ${e.message}")
+                    currentIndex++ // Skip to the next item if there's an error
                 }
             } else {
                 Log.e(TAG, "No video resource found for phrase: $phrase")
+                currentIndex++ // Skip to the next item
             }
-
-            currentIndex++ // Move to the next item
         }
 
         // All videos finished
         Log.d(TAG, "All videos finished.")
         viewBinding.videoView.visibility = View.GONE
+        
+        // Reset prediction text
+        val predictedSignTextView = findViewById<TextView>(R.id.predictedSignTextView)
+        predictedSignTextView.text = "Waiting for sign detection..."
+    }
+
+    private fun centerVideoOnScreen() {
+        // Just ensure the video is visible
+        viewBinding.videoView.visibility = View.VISIBLE
     }
 
     private fun splitIntoKnownPhrases(input: String): List<String> {
@@ -1080,113 +890,579 @@ class NonSignersToSignersActivity : AppCompatActivity(), PoseLandmarkerHelper.La
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 10 && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            startCamera()
+            startAdvertising()
         } else {
-            Toast.makeText(this, "Camera permission is required to use the camera", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Permission is required to continue", Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun startCamera() {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+    private fun startAdvertising() {
+        val advertisingOptions = AdvertisingOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
+        connectionsClient.startAdvertising(
+            "User",
+            serviceId,
+            connectionLifecycleCallback,
+            advertisingOptions
+        ).addOnSuccessListener {
+            Log.d(TAG, "Advertising started successfully.")
+        }.addOnFailureListener { e ->
+            Log.e(TAG, "Advertising failed: ${e.message}")
+        }
+    }
 
-        cameraProviderFuture.addListener({
-            val cameraProvider = cameraProviderFuture.get()
-            val preview = Preview.Builder()
-                .setTargetAspectRatio(AspectRatio.RATIO_4_3)
-                .setTargetRotation(viewBinding.previewView.display.rotation)
-                .build().also {
-                    it.setSurfaceProvider(viewBinding.previewView.surfaceProvider)
+    private val connectionLifecycleCallback = object : ConnectionLifecycleCallback() {
+        override fun onConnectionInitiated(endpointId: String, connectionInfo: ConnectionInfo) {
+            Log.d(TAG, "Connection initiated with ${connectionInfo.endpointName}")
+            connectionsClient.acceptConnection(endpointId, payloadCallback)
+        }
+
+        override fun onConnectionResult(endpointId: String, result: ConnectionResolution) {
+            if (result.status.isSuccess) {
+                isConnected = true
+                val username = intent.getStringExtra("USERNAME") ?: "Unknown"
+
+                // Add endpoint and username to the map (but don't add to UI yet - we'll wait for ROLE message)
+                Log.d(TAG, "Connection successful to endpoint: $endpointId")
+
+                // Send user information including profile image
+                val profileData = if (myProfileImageBase64 != null) {
+                    "ROLE:$role,USERNAME:$username,PROFILE_IMAGE:$myProfileImageBase64"
+                } else {
+                    "ROLE:$role,USERNAME:$username"
                 }
+                
+                val payload = Payload.fromBytes(profileData.toByteArray())
+                connectionsClient.sendPayload(endpointId, payload)
+                    .addOnSuccessListener {
+                        Log.d(TAG, "Sent profile data successfully to $endpointId")
+                    }
+                    .addOnFailureListener { e ->
+                        Log.e(TAG, "Failed to send profile data to $endpointId: ${e.message}")
+                    }
 
-            val imageAnalyzer = ImageAnalysis.Builder()
-                .setTargetAspectRatio(AspectRatio.RATIO_4_3)
-                .setTargetRotation(viewBinding.previewView.display.rotation)
-                .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build().also { analyzer ->
-                    analyzer.setAnalyzer(cameraExecutor) { imageProxy ->
-                        try {
-                            poseLandmarkerHelper?.detectLiveStream(imageProxy, isFrontCamera = false)
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error analyzing image: ${e.message}")
-                        } finally {
-                            imageProxy.close()
+                Log.d(TAG, "Connected to $endpointId. Sent username: $username and profile image.")
+            } else {
+                Log.e(TAG, "Connection failed to $endpointId with status: ${result.status}")
+            }
+        }
+
+        override fun onDisconnected(endpointId: String) {
+            val username = connectedEndpoints.remove(endpointId)
+            if (!username.isNullOrEmpty()) {
+                removeUserFromSpinner(username)
+            }
+            updateParticipantCount()
+            
+            if (connectedEndpoints.isEmpty()) {
+                isConnected = false
+                Log.d(TAG, "No more connected endpoints. Setting isConnected to false.")
+            }
+            
+            Log.d(TAG, "Disconnected from $endpointId. Username removed: $username")
+        }
+    }
+
+    private val payloadCallback = object : PayloadCallback() {
+        override fun onPayloadReceived(endpointId: String, payload: Payload) {
+            if (isActivityDestroyed) {
+                Log.w(TAG, "Payload received but activity is destroyed. Ignoring payload.")
+                return
+            }
+
+            Log.d(TAG, "Payload received from endpointId: $endpointId")
+
+            if (payload.type == Payload.Type.BYTES) {
+                val message = payload.asBytes()?.let { String(it) }
+                if (message != null) {
+                    // Handle messages
+                    when {
+                        message.startsWith("ROLE:") -> {
+                            // Parse message that includes role, username and potentially profile image
+                            val parts = message.split(",")
+                            val role = parts.find { it.startsWith("ROLE:") }?.removePrefix("ROLE:")
+                            val username = parts.find { it.startsWith("USERNAME:") }?.removePrefix("USERNAME:")
+                            val profileImage = parts.find { it.startsWith("PROFILE_IMAGE:") }?.removePrefix("PROFILE_IMAGE:")
+
+                            if (role == "Non Signers" && username != null) {
+                                Log.d(TAG, "Parsed username: $username with role: $role from endpoint: $endpointId")
+                                // Add to connected endpoints map and update UI
+                                connectedEndpoints[endpointId] = username
+                                addUserToSpinner(username, endpointId, profileImage)
+                                updateParticipantCount()
+                                
+                                // Set the isConnected flag to true if we have at least one connection
+                                if (!isConnected && connectedEndpoints.isNotEmpty()) {
+                                    isConnected = true
+                                    Log.d(TAG, "At least one endpoint connected. Setting isConnected to true.")
+                                }
+                            } else {
+                                Log.e(TAG, "Invalid payload format or incompatible role: $message")
+                            }
+                        }
+                        message.startsWith("BROADCAST_PREDICTION:") -> {
+                            val parts = message.split(":", limit = 3)
+                            if (parts.size == 3) {
+                                val sender = parts[1] // Extract sender username
+                                val prediction = parts[2] // Extract the predicted sign
+                                displayPrediction(sender, prediction) // Use the same display logic
+                            } else {
+                                Log.e(TAG, "Invalid BROADCAST_PREDICTION message format: $message")
+                            }
+                        }
+                        message.startsWith("COMPLETE_TRANSLATION:") -> {
+                            val parts = message.split(":", limit = 3)
+                            if (parts.size == 3) {
+                                val sender = parts[1] 
+                                val completeSentence = parts[2]
+                                
+                                // Skip displaying messages from the current user
+                                val currentUsername = intent.getStringExtra("USERNAME") ?: "Unknown"
+                                if (sender == currentUsername) {
+                                    Log.d(TAG, "Skipped displaying own completed translation")
+                                    return@onPayloadReceived
+                                }
+                                
+                                // Format the message for display in chat
+                                val timestamp = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+                                val formattedMessage = "[$timestamp] 📝 $sender completed translation: $completeSentence"
+                                
+                                // Add prediction to chat history
+                                updateTextViewAndPlayVideo(formattedMessage)
+                                
+                                Log.d(TAG, "Displayed complete translation from $sender: $completeSentence")
+                            } else {
+                                Log.e(TAG, "Invalid COMPLETE_TRANSLATION message format: $message")
+                            }
+                        }
+                        message.startsWith("PREDICTION:") -> {
+                            val parts = message.split(":", limit = 3)
+                            if (parts.size == 3) {
+                                val sender = parts[1] // Correctly parses the sender username
+                                val prediction = parts[2] // Correctly parses the predicted sign
+                                displayPrediction(sender, prediction)
+                            } else {
+                                Log.e(TAG, "Invalid PREDICTION message format: $message")
+                            }
+                        }
+                        message.startsWith("ALERT:") -> {
+                            // Parse alert format: ALERT:<target>:<content>
+                            val parts = message.split(":", limit = 3)
+                            if (parts.size == 3) {
+                                val targetUser = parts[1]
+                                val alertContent = parts[2]
+                                val username = intent.getStringExtra("USERNAME") ?: "Unknown"
+
+                                if (targetUser == username || targetUser == "All") {
+                                    Log.d(TAG, "Received alert for this user: $alertContent")
+                                    showAlertNotification(alertContent)
+                                } else {
+                                    Log.d(TAG, "Received alert not intended for this user: $message")
+                                }
+                            }
+                        }
+                        message.startsWith("BROADCAST:") -> {
+                            // Broadcast message to all users
+                            val broadcastMessage = message.removePrefix("BROADCAST:")
+                            Log.d(TAG, "Received broadcast message: $broadcastMessage")
+                            updateTextViewAndPlayVideo(broadcastMessage)
+                        }
+                        message.startsWith("TARGET:") -> {
+                            // Targeted message for a specific user
+                            val parts = message.split(":", limit = 3)
+                            if (parts.size == 3) {
+                                val targetUser = parts[1]
+                                val targetMessage = parts[2]
+                                val username = intent.getStringExtra("USERNAME") ?: "Unknown"
+
+                                if (targetUser == username) {
+                                    Log.d(TAG, "Received targeted message: $targetMessage")
+                                    updateTextViewAndPlayVideo(targetMessage)
+                                } else {
+                                    Log.d(TAG, "Targeted message not for this user: $message")
+                                }
+                            }
+                        }
+                        message.startsWith("CONTROL:") -> {
+                            val parts = message.split(",")
+                            val controllingUser = parts[0].removePrefix("CONTROL:")
+                            controlSenderUsername = parts.find { it.startsWith("USERNAME:") }?.removePrefix("USERNAME:")
+
+                            val currentUsername = intent.getStringExtra("USERNAME") ?: "Unknown"
+                            hasControl = (controllingUser == "All" || controllingUser == currentUsername)
+
+                            runOnUiThread {
+                                val statusMessage = if (hasControl) {
+                                    "You now have control of model prediction, granted by $controlSenderUsername."
+                                } else {
+                                    "You do not have control of model prediction."
+                                }
+                                Toast.makeText(this@NonSignersToSignersActivity, statusMessage, Toast.LENGTH_SHORT).show()
+                                Log.d(TAG, "Control status updated. Granted by: $controlSenderUsername. Current control: $hasControl")
+                            }
+                        }
+                        message.contains("📝") && message.contains("completed translation:") -> {
+                            // Only pass through completed translation messages that are from other users
+                            val sender = message.substringAfter("[").substringAfter("]").trim().substringAfter("📝").trim().substringBefore("completed")
+                            val currentUsername = intent.getStringExtra("USERNAME") ?: "Unknown"
+                            
+                            if (sender.trim() == currentUsername) {
+                                Log.d(TAG, "Skipped displaying own completed translation from message handler")
+                                return@onPayloadReceived
+                            } else {
+                                // For other users' messages, pass to the general handler
+                                updateTextViewAndPlayVideo(message)
+                            }
+                        }
+                        else -> {
+                            // Handle other messages
+                            updateTextViewAndPlayVideo(message)
                         }
                     }
                 }
-
-            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-
-            try {
-                cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalyzer)
-            } catch (exc: Exception) {
-                Log.e(TAG, "Use case binding failed", exc)
-            }
-        }, ContextCompat.getMainExecutor(this))
-    }
-
-    override fun onResults(resultBundle: PoseLandmarkerHelper.ResultBundle) {
-        runOnUiThread {
-            val layoutParams = viewBinding.videoView.layoutParams as FrameLayout.LayoutParams
-            if (resultBundle.results.isNotEmpty()) {
-                val firstPose = resultBundle.results[0]
-                val landmarks = firstPose.landmarks()
-
-                if (landmarks.isNotEmpty() && landmarks[0].isNotEmpty()) {
-                    val rightShoulder = landmarks[0][12] // Right shoulder landmark
-
-                    val screenX = (rightShoulder.x() * viewBinding.previewView.width).toInt()
-                    val screenY = (rightShoulder.y() * viewBinding.previewView.height).toInt()
-
-                    layoutParams.leftMargin = screenX - viewBinding.videoView.width / 2
-                    layoutParams.topMargin = screenY - viewBinding.videoView.height / 2
-                    viewBinding.videoView.layoutParams = layoutParams
-                    viewBinding.videoView.visibility = View.VISIBLE
-                } else {
-                    // No landmarks detected, center video on the screen
-                    centerVideoOnScreen(layoutParams)
-                }
             } else {
-                // No pose detected, center video on the screen
-                centerVideoOnScreen(layoutParams)
+                Log.e(TAG, "Received payload of unexpected type from endpoint: $endpointId")
+            }
+        }
+
+        override fun onPayloadTransferUpdate(endpointId: String, update: PayloadTransferUpdate) {
+            if (isActivityDestroyed) {
+                Log.w(TAG, "Payload transfer update received but activity is destroyed. Ignoring update.")
+                return
+            }
+
+            if (update.status == PayloadTransferUpdate.Status.SUCCESS) {
+                Log.d(TAG, "Payload transfer successfully completed for endpoint: $endpointId")
+            } else if (update.status == PayloadTransferUpdate.Status.FAILURE) {
+                Log.e(TAG, "Payload transfer failed for endpoint: $endpointId")
+                
+                // Check if this failure means we should consider the endpoint disconnected
+                if (connectedEndpoints.containsKey(endpointId)) {
+                    Log.d(TAG, "Endpoint $endpointId is no longer connected after payload failure")
+                    val username = connectedEndpoints.remove(endpointId)
+                    if (username != null) {
+                        removeUserFromSpinner(username)
+                        updateParticipantCount()
+                    }
+                    
+                    // Update isConnected flag if needed
+                    if (connectedEndpoints.isEmpty()) {
+                        isConnected = false
+                        Log.d(TAG, "No more connected endpoints after payload failure. Setting isConnected to false.")
+                    }
+                }
             }
         }
     }
 
-    private fun centerVideoOnScreen(layoutParams: FrameLayout.LayoutParams) {
-        // Calculate center position based on parent (frameLayout in this case)
-        val parentWidth = viewBinding.frameLayout.width
-        val parentHeight = viewBinding.frameLayout.height
-
-        if (parentWidth > 0 && parentHeight > 0) {
-            layoutParams.leftMargin = (parentWidth - viewBinding.videoView.width) / 2
-            layoutParams.topMargin = (parentHeight - viewBinding.videoView.height) / 2
-            viewBinding.videoView.layoutParams = layoutParams
-            viewBinding.videoView.visibility = View.VISIBLE
-        } else {
-            // Default to making the video visible if dimensions are not yet available
-            viewBinding.videoView.visibility = View.VISIBLE
-        }
-    }
-
-    override fun onError(error: String, errorCode: Int) {
-        Log.e(TAG, "Pose detection error: $error")
+    private fun displayPrediction(sender: String, prediction: String) {
         runOnUiThread {
-            Toast.makeText(this, "Pose detection error: $error", Toast.LENGTH_SHORT).show()
+            val predictedSignTextView = findViewById<TextView>(R.id.predictedSignTextView)
+            
+            // Check if the prediction is empty (after a RESET)
+            if (prediction.isBlank()) {
+                predictedSignTextView.text = "Waiting for sign detection..."
+                
+                // Hide the video view since there's nothing to display
+                viewBinding.videoView.visibility = View.GONE
+                
+                // Make sure wrong sign button is still visible for next prediction
+                viewBinding.wrongSignButton.visibility = View.VISIBLE
+                viewBinding.wrongSignButton.bringToFront()
+                
+                Log.d(TAG, "Cleared prediction display after receiving empty prediction from $sender")
+                return@runOnUiThread
+            }
+            
+            // Format with the sender information if available
+            val formattedPrediction = if (sender.isNotEmpty() && sender != "Unknown") {
+                "Current sign: $prediction (from $sender)"
+            } else {
+                "Current sign: $prediction"
+            }
+            
+            predictedSignTextView.text = formattedPrediction
+            
+            // Make sure the TextView is visible
+            predictedSignTextView.visibility = View.VISIBLE
+            
+            // Animate the text slightly to draw attention
+            predictedSignTextView.alpha = 0.7f
+            predictedSignTextView.animate().alpha(1.0f).setDuration(300).start()
+            
+            Log.d(TAG, "Displayed prediction from $sender: $prediction")
+            
+            // Play video corresponding to the prediction immediately
+            try {
+                // Always stop any currently playing video
+                if (viewBinding.videoView.isPlaying) {
+                    viewBinding.videoView.stopPlayback()
+                }
+                
+                // Format the prediction for video lookup
+                val formattedPrediction = prediction.lowercase().trim().replace(" ", "_")
+                
+                // Find the appropriate video for this prediction
+                val phrases = splitIntoKnownPhrases(formattedPrediction)
+                
+                if (phrases.isNotEmpty()) {
+                    // Get just the first phrase to show immediately
+                    val firstPhrase = phrases[0]
+                    val videoResId = videoMap[firstPhrase] ?: getAlphabetVideos(firstPhrase)
+                    
+                    if (videoResId != null) {
+                        // Play the video immediately
+                        val videoUri = Uri.parse("android.resource://$packageName/$videoResId")
+                        Log.d(TAG, "IMMEDIATELY playing video for phrase: $firstPhrase, URI: $videoUri")
+                        
+                        viewBinding.videoView.setVideoURI(videoUri)
+                        viewBinding.videoView.visibility = View.VISIBLE
+                        viewBinding.videoView.start()
+                        
+                        // Store the full phrase list in case we need it later
+                        wordList = phrases
+                        currentIndex = 1  // We've played the first one already
+                    } else {
+                        Log.e(TAG, "No video resource found for phrase: $firstPhrase")
+                        viewBinding.videoView.visibility = View.GONE
+                    }
+                } else {
+                    Log.d(TAG, "No phrases found for prediction: $prediction")
+                    viewBinding.videoView.visibility = View.GONE
+                }
+                
+                // Make sure wrong sign button is visible
+                viewBinding.wrongSignButton.visibility = View.VISIBLE
+                viewBinding.wrongSignButton.bringToFront()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error processing prediction for video: ${e.message}", e)
+                viewBinding.videoView.visibility = View.GONE
+            }
+            
+            // Optional vibration feedback
+            try {
+                val vibrator = getSystemService(VIBRATOR_SERVICE) as Vibrator
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
+                } else {
+                    vibrator.vibrate(100)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error with vibration: ${e.message}")
+            }
         }
     }
 
-    private fun stopCamera() {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-        cameraProviderFuture.addListener({
-            try {
-                val cameraProvider = cameraProviderFuture.get()
-                cameraProvider.unbindAll()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error while stopping the camera: ${e.message}")
+    private fun showAlertNotification(alertContent: String) {
+        runOnUiThread {
+            Toast.makeText(this, alertContent, Toast.LENGTH_LONG).show()
+
+            // Optional: Vibrate or play sound for alerts
+            val vibrator = getSystemService(VIBRATOR_SERVICE) as Vibrator
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                vibrator.vibrate(500)
             }
-        }, ContextCompat.getMainExecutor(this))
+        }
+    }
+
+    private fun updateTextViewAndPlayVideo(message: String) {
+        Log.d(TAG, "Received message: $message")
+        runOnUiThread {
+            if (message.isBlank()) {
+                viewBinding.videoView.visibility = View.GONE
+                viewBinding.textView.visibility = View.GONE
+                Log.d(TAG, "No message received. VideoView and TextView are now hidden.")
+                return@runOnUiThread
+            }
+
+            try {
+                // Format message with timestamp
+                val timestamp = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+                val displayMessage: String
+                val actualMessage: String
+                val formattedMessage: String
+                val currentUsername = intent.getStringExtra("USERNAME") ?: "Unknown"
+
+                // Parse the message based on its format
+                when {
+                    message.contains("📝") && message.contains("completed translation:") -> {
+                        // Special format for translation completions
+                        val sender = message.substringAfter("[").substringAfter("]").trim().substringAfter("📝").trim().substringBefore("completed")
+                        val content = message.substringAfter("completed translation:").trim()
+                        
+                        // Only show completed translations from other users, not from current user
+                        if (sender.trim() == currentUsername) {
+                            // Skip displaying own messages
+                            return@runOnUiThread
+                        }
+                        
+                        displayMessage = "[$timestamp] <div style='text-align: left; color: #006400;'><b>$sender completed translation:</b> $content 📝</div>"
+                        actualMessage = content
+                        formattedMessage = "$sender completed translation: $content 📝"
+                    }
+                    message.startsWith("BROADCAST:") -> {
+                        val parts = message.removePrefix("BROADCAST:").split(":", limit = 2)
+                        if (parts.size == 2) {
+                            val sender = parts[0]
+                            actualMessage = parts[1]
+                            // Check if this is a message from the current user
+                            if (sender == currentUsername) {
+                                displayMessage = "[$timestamp] <div style='text-align: right; color: #4B1F4E;'><b>You:</b> $actualMessage 📢</div>"
+                            } else {
+                                displayMessage = "[$timestamp] <div style='text-align: left;'><b>$sender:</b> $actualMessage 📢</div>"
+                            }
+                            formattedMessage = "$sender: $actualMessage 📢"
+                        } else {
+                            throw IllegalArgumentException("Invalid broadcast message format: $message")
+                        }
+                    }
+                    message.contains("→") -> {
+                        val parts = message.split("→", limit = 2)
+                        val sender = parts[0].trim()
+                        val recipientMessage = parts[1].trim()
+                        val recipientParts = recipientMessage.split(":", limit = 2)
+                        val recipient = recipientParts[0].trim()
+                        actualMessage = recipientParts.getOrElse(1) { "" }.trim()
+                        
+                        // Check if this is a message from the current user
+                        if (sender == currentUsername) {
+                            displayMessage = "[$timestamp] <div style='text-align: right; color: #4B1F4E;'><b>You → $recipient:</b> $actualMessage 🔹</div>"
+                        } else {
+                            displayMessage = "[$timestamp] <div style='text-align: left;'><b>$sender → $recipient:</b> $actualMessage 🔹</div>"
+                        }
+                        formattedMessage = "$sender → $recipient: $actualMessage 🔹"
+                    }
+                    message.contains(":") -> {
+                        val parts = message.split(":", limit = 2)
+                        val sender = parts[0].trim()
+                        actualMessage = parts[1].trim()
+                        
+                        // Check if this is a message from the current user
+                        if (sender == currentUsername) {
+                            displayMessage = "[$timestamp] <div style='text-align: right; color: #4B1F4E;'><b>You:</b> $actualMessage 💬</div>"
+                        } else {
+                            displayMessage = "[$timestamp] <div style='text-align: left;'><b>$sender:</b> $actualMessage 💬</div>"
+                        }
+                        formattedMessage = "$sender: $actualMessage 💬"
+                    }
+                    else -> {
+                        // System messages or other formats
+                        displayMessage = "[$timestamp] <div style='text-align: center; color: #888888;'>$message</div>"
+                        actualMessage = message
+                        formattedMessage = message
+                    }
+                }
+
+                // Add message to history with line breaks
+                if (messageHistory.isNotEmpty()) {
+                    messageHistory.append("\n")
+                }
+                messageHistory.append(displayMessage)
+
+                // Update TextView with the full message history
+                        viewBinding.textView.visibility = View.VISIBLE
+                
+                // Use HTML formatting to support text alignment
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                    viewBinding.textView.text = android.text.Html.fromHtml(messageHistory.toString(), android.text.Html.FROM_HTML_MODE_COMPACT)
+                } else {
+                    @Suppress("DEPRECATION")
+                    viewBinding.textView.text = android.text.Html.fromHtml(messageHistory.toString())
+                }
+
+                // Enhanced scrolling to ensure the latest messages are always visible
+                val scrollView = findViewById<ScrollView>(R.id.messageScrollView)
+                
+                // Clear any pending posts to ensure we don't have multiple scroll operations queued
+                scrollView.removeCallbacks(null)
+                
+                // Immediate scroll attempt
+                scrollView.post {
+                    // Force layout to calculate correct scroll height
+                    scrollView.fullScroll(ScrollView.FOCUS_DOWN)
+                    
+                    // Secondary scroll with slight delay to ensure layout is complete
+                    scrollView.postDelayed({
+                        // Forcibly update scroll position to bottom
+                        scrollView.smoothScrollTo(0, scrollView.getChildAt(0).height)
+
+                        // Final backup scroll attempt
+                        scrollView.postDelayed({
+                            scrollView.fullScroll(ScrollView.FOCUS_DOWN)
+                            // Force invalidate to ensure UI is updated
+                            scrollView.invalidate()
+                        }, 150)
+                    }, 50)
+                }
+
+                // Stop any currently playing video before processing the new message
+                if (viewBinding.videoView.isPlaying) {
+                    viewBinding.videoView.stopPlayback()
+                }
+                
+                // Clear any pending videos
+                wordList = emptyList()
+                currentIndex = 0
+                
+                // Process the message for immediate playback
+                try {
+                    // Get just the first phrase to show immediately
+                    val formattedInput = actualMessage.lowercase().replace(" ", "_")
+                    val phrases = splitIntoKnownPhrases(formattedInput)
+                    
+                    if (phrases.isNotEmpty()) {
+                        val firstPhrase = phrases[0]
+                        val videoResId = videoMap[firstPhrase] ?: getAlphabetVideos(firstPhrase)
+                        
+                        if (videoResId != null) {
+                            // Play the video immediately
+                            val videoUri = Uri.parse("android.resource://$packageName/$videoResId")
+                            Log.d(TAG, "IMMEDIATELY playing video for phrase: $firstPhrase, URI: $videoUri")
+                            
+                            viewBinding.videoView.setVideoURI(videoUri)
+                            viewBinding.videoView.visibility = View.VISIBLE
+                            viewBinding.videoView.start()
+                            
+                            // Store the full phrase list
+                            wordList = phrases
+                            currentIndex = 1  // We've played the first one already
+                        } else {
+                            Log.e(TAG, "No video resource found for phrase: $firstPhrase")
+                            viewBinding.videoView.visibility = View.GONE
+                        }
+                    } else {
+                        Log.d(TAG, "No phrases found for message: $actualMessage")
+                        viewBinding.videoView.visibility = View.GONE
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error playing video for message: ${e.message}", e)
+                    // Traditional fallback method in case of error
+                    processMessageForVideo(actualMessage)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error processing message: $message", e)
+                viewBinding.textView.text = "Error: Unable to display message."
+                viewBinding.textView.visibility = View.VISIBLE
+            }
+        }
+    }
+
+    private fun processMessageForVideo(message: String) {
+        // Stop any currently playing video
+        if (viewBinding.videoView.isPlaying) {
+            viewBinding.videoView.stopPlayback()
+        }
+        
+        val formattedInput = message.lowercase().replace(" ", "_")
+        wordList = splitIntoKnownPhrases(formattedInput)
+        currentIndex = 0
+
+        if (wordList.isNotEmpty()) {
+            playNextVideo()
+        } else {
+            viewBinding.videoView.visibility = View.GONE
+        }
     }
 
     private fun stopAdvertising() {
@@ -1204,10 +1480,10 @@ class NonSignersToSignersActivity : AppCompatActivity(), PoseLandmarkerHelper.La
 
             // Clear the connectedEndpoints map and update the UI
             connectedEndpoints.clear()
-            connectedUsernames.clear()
-            connectedUsernames.add("None")
-            connectedUsernames.add("All")
-            adapter.notifyDataSetChanged()
+            connectedUsers.clear()
+            connectedUsers.add(UserWithImage("None"))
+            connectedUsers.add(UserWithImage("All"))
+            userSpinnerAdapter.notifyDataSetChanged()
             updateParticipantCount()
         } else {
             Log.d(TAG, "No active connections to disconnect.")
@@ -1230,8 +1506,75 @@ class NonSignersToSignersActivity : AppCompatActivity(), PoseLandmarkerHelper.La
 
     override fun onDestroy() {
         super.onDestroy()
-        stopCamera()
-        cameraExecutor.shutdown()
         isActivityDestroyed = true
+    }
+
+    private fun sendMessageToNonDeafUser(message: String, targetUser: String) {
+        // Check if we have any connections first
+        if (connectedEndpoints.isEmpty()) {
+            Toast.makeText(this, "No connected users to send messages to", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        when (targetUser) {
+            "None" -> {
+                Toast.makeText(this, "Please select a user to send the message to", Toast.LENGTH_SHORT).show()
+            }
+            "All" -> {
+                // Send to all connected users
+                val username = intent.getStringExtra("USERNAME") ?: "Unknown"
+                val formattedMessage = "BROADCAST:$username:$message"
+                var sent = false
+                
+                for (endpointId in connectedEndpoints.keys) {
+                    connectionsClient.sendPayload(endpointId, Payload.fromBytes(formattedMessage.toByteArray()))
+                        .addOnSuccessListener { 
+                            Log.d(TAG, "Message sent to all: $message")
+                            sent = true
+                        }
+                        .addOnFailureListener { e -> 
+                            Log.e(TAG, "Failed to send message to $endpointId", e) 
+                        }
+                }
+                
+                // Update local display regardless of success to show what we tried to send
+                updateTextViewAndPlayVideo("$username:$message")
+                
+                if (connectedEndpoints.isEmpty()) {
+                    Toast.makeText(this, "No connected users to broadcast to", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "Message sent to all participants", Toast.LENGTH_SHORT).show()
+                }
+            }
+            else -> {
+                // Send to specific user
+                val username = intent.getStringExtra("USERNAME") ?: "Unknown"
+                // Find the endpoint ID for the target user
+                val targetEndpointId = connectedEndpoints.entries.find { it.value == targetUser }?.key
+                
+                if (targetEndpointId != null) {
+                    // Using TARGET: format for compatibility with both activities
+                    val formattedMessage = "TARGET:$targetUser:$username:$message"
+                    connectionsClient.sendPayload(targetEndpointId, Payload.fromBytes(formattedMessage.toByteArray()))
+                        .addOnSuccessListener { 
+                            Log.d(TAG, "Message sent to $targetUser: $message") 
+                            // Update local display
+                            updateTextViewAndPlayVideo("$username → $targetUser: $message")
+                            Toast.makeText(this, "Message sent to $targetUser", Toast.LENGTH_SHORT).show()
+                        }
+                        .addOnFailureListener { e -> 
+                            Log.e(TAG, "Failed to send message to $targetUser", e)
+                            // Still update the local display to show what we tried to send 
+                            updateTextViewAndPlayVideo("$username → $targetUser: $message (failed to send)")
+                            Toast.makeText(this, "Failed to send message to $targetUser", Toast.LENGTH_SHORT).show()
+                        }
+                } else {
+                    Log.e(TAG, "User $targetUser not found in connected endpoints: $connectedEndpoints")
+                    // Update with a failure message
+                    updateTextViewAndPlayVideo("$username → $targetUser: $message (user not found)")
+                    Toast.makeText(this, "User $targetUser not found", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
     }
 }
