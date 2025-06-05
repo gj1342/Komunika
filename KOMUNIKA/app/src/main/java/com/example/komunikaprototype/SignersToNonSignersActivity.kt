@@ -100,6 +100,8 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
         }
     }
 
+    private var isDetectionActive = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         viewBinding = SignersToNonsignersBinding.inflate(layoutInflater)
@@ -664,23 +666,23 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
                                 Thread.sleep(200)
                                 
                                 when (strippedMessage) {
-                                    "1" -> handLandmarkerHelper?.loadModelsAndLabels("alphabets")
-                                    "2" -> handLandmarkerHelper?.loadModelsAndLabels("1-5")
-                                    "3" -> handLandmarkerHelper?.loadModelsAndLabels("6-10")
-                                    "4" -> handLandmarkerHelper?.loadModelsAndLabels("20-100")
-                                    "5" -> handLandmarkerHelper?.loadModelsAndLabels("greetings")
-                                    "6" -> handLandmarkerHelper?.loadModelsAndLabels("responses")
-                                    "7" -> handLandmarkerHelper?.loadModelsAndLabels("family")
-                                    "8" -> handLandmarkerHelper?.loadModelsAndLabels("colors")
-                                    "9" -> handLandmarkerHelper?.loadModelsAndLabels("pronouns")
-                                    "10" -> handLandmarkerHelper?.loadModelsAndLabels("nouns")
-                                    "11" -> handLandmarkerHelper?.loadModelsAndLabels("verbs")
-                                    "12" -> handLandmarkerHelper?.loadModelsAndLabels("school")
-                                    "13" -> handLandmarkerHelper?.loadModelsAndLabels("weeks")
-                                    "14" -> handLandmarkerHelper?.loadModelsAndLabels("time")
-                                    "15" -> handLandmarkerHelper?.loadModelsAndLabels("questions")
-                                    "16" -> handLandmarkerHelper?.loadModelsAndLabels("phrases")
-                                    "17" -> handLandmarkerHelper?.loadModelsAndLabels("calendar")
+                                    "1" -> { handLandmarkerHelper?.loadModelsAndLabels("alphabets"); isDetectionActive = true }
+                                    "2" -> { handLandmarkerHelper?.loadModelsAndLabels("1-5"); isDetectionActive = true }
+                                    "3" -> { handLandmarkerHelper?.loadModelsAndLabels("6-10"); isDetectionActive = true }
+                                    "4" -> { handLandmarkerHelper?.loadModelsAndLabels("20-100"); isDetectionActive = true }
+                                    "5" -> { handLandmarkerHelper?.loadModelsAndLabels("greetings"); isDetectionActive = true }
+                                    "6" -> { handLandmarkerHelper?.loadModelsAndLabels("responses"); isDetectionActive = true }
+                                    "7" -> { handLandmarkerHelper?.loadModelsAndLabels("family"); isDetectionActive = true }
+                                    "8" -> { handLandmarkerHelper?.loadModelsAndLabels("colors"); isDetectionActive = true }
+                                    "9" -> { handLandmarkerHelper?.loadModelsAndLabels("pronouns"); isDetectionActive = true }
+                                    "10" -> { handLandmarkerHelper?.loadModelsAndLabels("nouns"); isDetectionActive = true }
+                                    "11" -> { handLandmarkerHelper?.loadModelsAndLabels("verbs"); isDetectionActive = true }
+                                    "12" -> { handLandmarkerHelper?.loadModelsAndLabels("school"); isDetectionActive = true }
+                                    "13" -> { handLandmarkerHelper?.loadModelsAndLabels("weeks"); isDetectionActive = true }
+                                    "14" -> { handLandmarkerHelper?.loadModelsAndLabels("time"); isDetectionActive = true }
+                                    "15" -> { handLandmarkerHelper?.loadModelsAndLabels("questions"); isDetectionActive = true }
+                                    "16" -> { handLandmarkerHelper?.loadModelsAndLabels("phrases"); isDetectionActive = true }
+                                    "17" -> { handLandmarkerHelper?.loadModelsAndLabels("calendar"); isDetectionActive = true }
                                     else -> Log.e(TAG, "Unknown model selection: $message")
                                 }
                                 modelsLoaded = true
@@ -807,6 +809,7 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
 
     private fun stopHandDetection() {
         runOnUiThread {
+            isDetectionActive = false
             if (handLandmarkerHelper != null) {
                 // Get the current sentence prediction text before stopping
                 val currentSentence = sentenceBuilder.toString().trim()
@@ -829,7 +832,7 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
                     }
                     
                     // Add to local chat history too
-                    val timestamp = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+                    val timestamp = java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date())
                     val displayMessage = "[$timestamp] 📝 You completed translation: $currentSentence"
                     addToMessageHistory(displayMessage)
                 }
@@ -843,10 +846,12 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
                 sentenceBuilder.clear()
                 predictionHistory.clear()
                 sentenceTextView.text = "Prediction: "
-                
+
                 Toast.makeText(this, "Hand detection stopped.", Toast.LENGTH_SHORT).show()
                 Log.d(TAG, "Hand detection models unloaded successfully.")
             }
+            // Always clear the overlay, even if helper is null
+            overlayView.clear()
         }
     }
 
@@ -940,7 +945,7 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
         var messageSent = false
 
         // Also display the outgoing message in our own chat history
-        val timestamp = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+        val timestamp = java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date())
         val displayMessage = if (selectedUser == "All") {
             "[$timestamp] 📤 $currentDeviceUsername → All: $message"
         } else {
@@ -985,7 +990,7 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
     private fun addToMessageHistory(message: String) {
         runOnUiThread {
             val currentUsername = intent.getStringExtra("USERNAME") ?: "Unknown"
-            val timestamp = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+            val timestamp = java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date())
             
             // Format the message based on who sent it and message type
             val formattedMessage = when {
@@ -1080,6 +1085,7 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
     }
 
     private fun startCamera() {
+        isDetectionActive = true
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener({
             val cameraProvider = cameraProviderFuture.get()
@@ -1364,14 +1370,15 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
     // Implement HandLandmarkerHelper.LandmarkerListener
     override fun onResults(resultBundle: HandLandmarkerHelper.ResultBundle) {
         runOnUiThread {
+            if (!isDetectionActive) {
+                overlayView.clear()
+                return@runOnUiThread
+            }
             val handLandmarkerResult = resultBundle.results
-
             if (handLandmarkerResult.landmarks().isNotEmpty()) {
-                // Draw
                 overlayView.setResults(handLandmarkerResult)
                 overlayView.visibility = View.VISIBLE
             } else {
-                // Clear + hide
                 overlayView.clear()
                 overlayView.visibility = View.GONE
             }
@@ -1556,7 +1563,7 @@ class SignersToNonSignersActivity : AppCompatActivity(), HandLandmarkerHelper.La
 
     // Method to display messages from deaf users
     private fun displayDeafUserMessage(senderUsername: String, message: String, messageType: String) {
-        val timestamp = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+        val timestamp = java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date())
         val formattedMessage = when (messageType) {
             "BROADCAST" -> "[$timestamp] 📢 $senderUsername: $message"
             "DIRECT" -> "[$timestamp] 💬 $senderUsername: $message"

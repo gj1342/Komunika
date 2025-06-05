@@ -61,11 +61,7 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="3149154c-ce88-4c4a-a4f1-702a186063f1" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/KOMUNIKA/.idea/other.xml" beforeDir="false" afterPath="$PROJECT_DIR$/KOMUNIKA/.idea/other.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/KOMUNIKA/app/src/main/java/com/example/komunikaprototype/NonSignersToSignersActivity.kt" beforeDir="false" afterPath="$PROJECT_DIR$/KOMUNIKA/app/src/main/java/com/example/komunikaprototype/NonSignersToSignersActivity.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/KOMUNIKA/app/src/main/res/layout/nonsigners_to_signers.xml" beforeDir="false" afterPath="$PROJECT_DIR$/KOMUNIKA/app/src/main/res/layout/nonsigners_to_signers.xml" afterDir="false" />
-    </list>
+    <list default="true" id="3149154c-ce88-4c4a-a4f1-702a186063f1" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -165,10 +161,10 @@
     "cidr.known.project.marker": "true",
     "com.android.tools.idea.streaming.zoom.toolbar.visible": "false",
     "com.google.services.firebase.aqiPopupShown": "true",
-    "git-widget-placeholder": "main",
+    "git-widget-placeholder": "nonAR-chatHistory-multiPhone-Feature",
     "ignore.virus.scanning.warn.message": "true",
     "kotlin-language-version-configured": "true",
-    "last_opened_file_path": "D:/FOR WORK/CODE ACTIVITIES/MOBILE DEVELOPMENT/Komunika/KOMUNIKA",
+    "last_opened_file_path": "D:/FOR WORK/CODE ACTIVITIES/MOBILE DEVELOPMENT/KOTLIN/Komunika/KOMUNIKA",
     "project.structure.last.edited": "Dependencies",
     "project.structure.proportion": "0.17",
     "project.structure.side.proportion": "0.2",
