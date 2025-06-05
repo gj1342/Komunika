@@ -1023,7 +1023,7 @@ class NonSignersToSignersActivity : AppCompatActivity() {
                                 }
                                 
                                 // Format the message for display in chat
-                                val timestamp = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+                                val timestamp = java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date())
                                 val formattedMessage = "[$timestamp] 📝 $sender completed translation: $completeSentence"
                                 
                                 // Add prediction to chat history
@@ -1278,7 +1278,7 @@ class NonSignersToSignersActivity : AppCompatActivity() {
 
             try {
                 // Format message with timestamp
-                val timestamp = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+                val timestamp = java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date())
                 val displayMessage: String
                 val actualMessage: String
                 val formattedMessage: String

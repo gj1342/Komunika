@@ -30,31 +30,35 @@ class VideoListAdapter(
         val item = items[position]
         holder.itemText.text = item
 
+        // Always reset the VideoView state
+        holder.itemVideo.stopPlayback()
+        holder.itemVideo.visibility = View.GONE
+
         val videoResId = videoMap?.get(item)
         if (videoResId != null) {
             val videoUri = Uri.parse("android.resource://${context.packageName}/$videoResId")
             holder.itemVideo.setVideoURI(videoUri)
-
-            // Hide the media controller (play button)
             holder.itemVideo.setMediaController(null)
-
-            // Set video to loop
             holder.itemVideo.setOnCompletionListener { holder.itemVideo.start() }
 
-            // Automatically start playback when the item is clicked
             holder.itemView.setOnClickListener {
-                if (!holder.itemVideo.isVisible) {
+                if (holder.itemVideo.visibility != View.VISIBLE) {
                     holder.itemVideo.visibility = View.VISIBLE
                     holder.itemVideo.start()
                 } else {
-                    holder.itemVideo.visibility = View.GONE
                     holder.itemVideo.stopPlayback()
+                    holder.itemVideo.visibility = View.GONE
                 }
             }
         } else {
-            // Hide VideoView if no video is available for the item
             holder.itemVideo.visibility = View.GONE
         }
+    }
+
+    override fun onViewRecycled(holder: VideoViewHolder) {
+        super.onViewRecycled(holder)
+        holder.itemVideo.stopPlayback()
+        holder.itemVideo.visibility = View.GONE
     }
 
     override fun getItemCount(): Int = items.size
